@@ -7,6 +7,8 @@ from typing import final
 from torch import tensor
 from torch.utils.data import Dataset
 
+from device import Device
+
 Sentence = list[str]
 
 Pattern_punctuation = re.compile(r'([.!?])')
@@ -80,7 +82,7 @@ class Language:
         return set()
 
     def sentence2tensor(self, sentence: Sentence):
-        return tensor([self.word2index.get(w, Token_NIL) for w in sentence])
+        return tensor([self.word2index.get(w, Token_NIL) for w in sentence], device=Device)
 
 
 class RUENDataset(Dataset):
