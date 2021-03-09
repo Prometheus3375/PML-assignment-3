@@ -1,8 +1,30 @@
 from collections.abc import Callable
+from timeit import default_timer
+
+
+def time2m_s(seconds: float) -> tuple[int, int]:
+    seconds = round(seconds)
+    minutes = seconds // 60
+    seconds -= minutes * 60
+    return minutes, seconds
+
+
+class Timer:
+    __slots__ = '_start', 'message'
+
+    def __init__(self, message: str = '\nTime elapsed: %dm %ds', /):
+        self._start = 0.
+        self.message = message
+
+    def __enter__(self, /):
+        self._start = default_timer()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb, /):
+        print(self.message % time2m_s(default_timer() - self._start))
 
 
 def time(func: Callable):
-    from timeit import default_timer
     from functools import wraps
 
     @wraps(func)
@@ -17,11 +39,8 @@ def time(func: Callable):
             result = None
             exception = e
 
-        end = default_timer()
-        seconds = round(end - start)
-        minutes = seconds // 60
-        seconds -= minutes * 60
-        print(f'\nTime elapsed: {minutes}m {seconds}s')
+        m, s = time2m_s(default_timer() - start)
+        print(f'\nTime elapsed: {m}m {s}s')
 
         if exception:
             raise exception
