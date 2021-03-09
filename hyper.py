@@ -1,4 +1,4 @@
-infrequentWordsPercentage = 0.02
-hiddenStateSize = 256
-learningRate = 0.01
-logInterval = 5_000
+infrequent_words_percentage = 0.02
+hidden_state_size = 256
+learning_rate = 0.01
+log_interval = 5_000
