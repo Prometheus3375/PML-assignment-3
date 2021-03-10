@@ -28,7 +28,7 @@ def evaluate(encoder: EncoderRNN, decoder: AttnDecoderRNN, input_tensor: Tensor)
 
         for di in range(decoder.max_length):
             decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-            topv, topi = decoder_output.data.topk(1)
+            topv, topi = decoder_output.topk(1)
             if topi.item() == Token_EOS:
                 break
 
@@ -40,7 +40,7 @@ def evaluate(encoder: EncoderRNN, decoder: AttnDecoderRNN, input_tensor: Tensor)
 
 @time
 def main(text_path: str, data_path: str):
-    hidden_state_size, max_output_length, ru_counter, en_counter, encoder_w, decoder_w = torch.load(data_path)
+    hidden_state_size, max_input_length, ru_counter, en_counter, encoder_w, decoder_w = torch.load(data_path)
 
     ru_lang = Language(ru_counter)
     en_lang = Language(en_counter)
@@ -49,7 +49,7 @@ def main(text_path: str, data_path: str):
     encoder.load_state_dict(encoder_w)
     encoder.to(Device).eval()
 
-    decoder = AttnDecoderRNN(hidden_state_size, en_lang.words_n, max_output_length)
+    decoder = AttnDecoderRNN(hidden_state_size, en_lang.words_n, max_input_length)
     decoder.load_state_dict(decoder_w)
     decoder.to(Device).eval()
 

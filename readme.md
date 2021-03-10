@@ -17,4 +17,5 @@
 
 [comment]: <> (1. [EN-RU plain-text bitexts of UN Parallel Corpus]&#40;https://conferences.unite.un.org/UNCORPUS/en/DownloadOverview&#41;)
 
+1. [Yandex English-Russian corpus](https://translate.yandex.ru/corpus?lang=en)
 1. [ParaCrawl Russian Corpus](https://www.paracrawl.eu/)
