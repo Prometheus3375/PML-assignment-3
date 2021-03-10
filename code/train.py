@@ -116,7 +116,7 @@ def main():
     # endregion
 
     # region Models and optimizers
-    encoder = EncoderRNN(ru_lang.words_n, hyper.hidden_state_size).to(Device).train()
+    encoder = EncoderRNN(ru_lang.words_n, hyper.hidden_state_size, hyper.conv_channels, hyper.conv_kernel).to(Device).train()
     decoder = AttnDecoderRNN(hyper.hidden_state_size, en_lang.words_n, max_input_length).to(Device).train()
 
     encoder_optimizer = Adam(encoder.parameters(), lr=hyper.learning_rate)

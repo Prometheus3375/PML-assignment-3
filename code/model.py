@@ -11,7 +11,7 @@ class Encoder(nn.Module):
 
 
 class EncoderRNN(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int, conv_channels: int, conv_kernel: int /):
+    def __init__(self, input_size: int, hidden_size: int, conv_channels: int, conv_kernel: int, /):
         super().__init__()
         self.hidden_size = hidden_size
 
@@ -21,7 +21,7 @@ class EncoderRNN(nn.Module):
             out_channels=conv_channels,
             kernel_size=(1, conv_kernel),
         )
-        self.gru = nn.GRU(hidden_size + conv_channels, hidden_size)
+        self.gru = nn.GRU(input_size=hidden_size + conv_channels, hidden_size=hidden_size)
 
     def __call__(self, input: Tensor, hidden: Tensor, /) -> tuple[Tensor, Tensor]:
         embedded = self.embedding(input).view(1, 1, -1)
