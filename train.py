@@ -106,7 +106,7 @@ def main():
             processed += 1
 
             if i % log_interval == 0:
-                printer.print(f'Training: {processed / total:.0%} [{processed}/{total}]')
+                printer.print(f'Training: {processed / total:.0%} [{processed:,}/{total:,}]')
 
             # print_loss_total += loss
             # plot_loss_total += loss
