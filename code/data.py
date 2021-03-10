@@ -9,10 +9,10 @@ from device import Device
 
 Sentence = str
 
-Pattern_number = re.compile(r'[\d.,:/]+[$%]?')
+Pattern_number = re.compile(r'-?[\d.,:/]+[$%]?')
 Pattern_en_postfixes = re.compile(r"(\w+)'(m|re|s|ve|d)")
 
-Pattern_ignored = re.compile(r"[^\w.,:/$%-' ]+")
+Pattern_ignored = re.compile(r"[^\w.,:/$%' -]+")
 Pattern_not_alpha = re.compile(r'\W+')
 Pattern_spaces = re.compile(r'\s+')
 
