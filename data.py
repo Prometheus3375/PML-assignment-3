@@ -11,22 +11,55 @@ from device import Device
 
 Sentence = str
 
-Pattern_punctuation = re.compile(r'([.!?])')
-Pattern_ignored = re.compile(r'[^\w.!?]+')
+Pattern_number = re.compile(r'[\d.,:/]+[$%]?')
+Pattern_en_postfixes = re.compile(r"(\w+)'(m|re|s|ve|d)")
+
+Pattern_ignored = re.compile(r"[^\w.,:/$%-']+")
+Pattern_not_alpha = re.compile(r'\W+')
+Pattern_spaces = re.compile(r'\s+')
 
 
 def preprocess_en(s: str, /) -> Sentence:
     s = s.lower()
-    s = Pattern_punctuation.sub(r' \1', s)
-    s = Pattern_ignored.sub(' ', s)
-    return s.strip()
+    s = Pattern_ignored.sub('', s)
+    words = s.split()
+    for i, w in enumerate(words):
+        w = w.rstrip(",.:'")
+
+        if Pattern_number.fullmatch(w):
+            pass
+        elif m := Pattern_en_postfixes.fullmatch(w):
+            w = m.group(1)
+        elif w.endswith("n't"):
+            if w == "won't":
+                w = 'will not'
+            elif w == "can't":
+                w = 'cannot'
+            else:
+                w = f'{w[:-3]} not'
+        else:
+            w = Pattern_not_alpha.sub(' ', w).strip()
+            w = Pattern_spaces.sub(' ', w)
+
+        words[i] = w
+
+    return ' '.join(words)
 
 
 def preprocess_ru(s: str, /) -> Sentence:
     s = s.lower()
-    s = Pattern_punctuation.sub(r' \1', s)
-    s = Pattern_ignored.sub(' ', s)
-    return s.strip()
+    s = Pattern_ignored.sub('', s)
+    words = s.split()
+    for i, w in enumerate(words):
+        w = w.rstrip(",.:")
+
+        if not Pattern_number.fullmatch(w):
+            w = Pattern_not_alpha.sub(' ', w).strip()
+            w = Pattern_spaces.sub(' ', w)
+
+        words[i] = w
+
+    return ' '.join(words)
 
 
 SOS = '^'
