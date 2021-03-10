@@ -1,17 +1,17 @@
-from itertools import chain
-from math import inf
+from math import ceil
 
 import torch
 from numpy import random
 from torch import Tensor
-from torch.nn import Module, NLLLoss
+from torch.nn import CrossEntropyLoss, Module
 from torch.optim import Adam, Optimizer
+from torch.utils.data import ConcatDataset, DataLoader
 
 import hyper
-from data import EOS, Language, ParaCrawl, Token_EOS, Token_SOS, Yandex
+from data import Language, ParaCrawl, Token_EOS, Token_SOS, Yandex, token2tensor
 from device import Device
 from misc import Printer, Timer, time
-from model import AttnDecoderRNN, EncoderRNN
+from model import AttnDecoderRNN, Decoder, Encoder, EncoderRNN
 
 
 def train(
@@ -70,6 +70,10 @@ def train(
     return loss.item() / target_length
 
 
+def print_tensor(name: str, t: Tensor):
+    print(f'\n{name} of size {tuple(t.size())}\n{t}')
+
+
 @time
 def main():
     # region Fix random
@@ -78,7 +82,7 @@ def main():
     # endregion
 
     # region Prepare data
-    with Timer('Data preparation time: %s'):
+    with Timer('\nData preparation time: %s\n'):
         ru_lang = Language()
         en_lang = Language()
 
@@ -97,77 +101,80 @@ def main():
             data_slice=slice(0),
         )
 
-        all_data = yandex, paracrawl,
+        infrequent_words_n = ceil(ru_lang.words_n * hyper.infrequent_words_percentage)
+        ru_lang.drop_words(ru_lang.lowk(infrequent_words_n))
+        print(f'{infrequent_words_n:,} infrequent Russian words are dropped')
 
-        for data in all_data:
-            ru_lang.add_sentences(data.ru)
-            en_lang.add_sentences(data.en)
+        print(f'Russian language: {ru_lang.words_n:,} words, {ru_lang.sentence_length:,} words in a sentence')
+        print(f'English language: {en_lang.words_n:,} words, {en_lang.sentence_length:,} words in a sentence')
 
-        dropped = ru_lang.drop_words(hyper.infrequent_words_percentage)
-
-        print(f'{len(dropped)} infrequent words are dropped')
-
-        max_input_length = -inf
-        for data in all_data:
-            for sentence in data.ru:
-                c = sentence.count(' ') + 1
-                if c > max_input_length:
-                    max_input_length = c
+        batch = hyper.batch_size
+        dataset = ConcatDataset((yandex, paracrawl))
+        loader = DataLoader(dataset, batch, shuffle=True)
     # endregion
 
     # region Models and optimizers
-    encoder = EncoderRNN(ru_lang.words_n, hyper.hidden_state_size).to(Device).train()
-    decoder = AttnDecoderRNN(hyper.hidden_state_size, en_lang.words_n, max_input_length).to(Device).train()
+    encoder = Encoder(ru_lang.words_n, hyper.embed_dim, hyper.hidden_dim).to(Device).train()
+    decoder = Decoder(en_lang.words_n, hyper.embed_dim, hyper.hidden_dim).to(Device).train()
 
     encoder_optimizer = Adam(encoder.parameters(), lr=hyper.learning_rate)
     decoder_optimizer = Adam(decoder.parameters(), lr=hyper.learning_rate)
-    criterion = NLLLoss()
+    criterion = CrossEntropyLoss()
     # endregion
 
     # region Training
+    sos = token2tensor(Token_SOS, batch)
+    eos = token2tensor(Token_EOS, batch)
+
     processed = 0
-    total = sum(len(d) for d in all_data)
+    total = len(dataset)
     log_interval = hyper.log_interval
+
     with Printer() as printer:
         printer.print(f'Training: starting...')
-        for i, (ru, en) in enumerate(chain(*all_data), 1):
-            ru = ru_lang.sentence2tensor(f'{ru} {EOS}').view(-1, 1)
-            en = en_lang.sentence2tensor(f'{en} {EOS}').view(-1, 1)
+        for i, (ru, en) in enumerate(loader, 1):
+            # print_tensor('ru', ru)
+            # print_tensor('en', en)
 
-            train(ru, en, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
+            # Zero the parameter gradients
+            encoder_optimizer.zero_grad()
+            decoder_optimizer.zero_grad()
 
-            processed += 1
+            # Run data through coders
+            encoder_inp = torch.cat((ru, eos), dim=1)
+            # print_tensor('encoder_inp', encoder_inp)
+            encoded, hc = encoder(encoder_inp)
 
+            decoder_inp = torch.cat((sos, en), dim=1)
+            decoder_out = torch.cat((en, eos), dim=1)
+            # print_tensor('decoder_inp', decoder_inp)
+            # print_tensor('decoder_out', decoder_out)
+            decoded, hc = decoder(decoder_inp, hc)
+            # print_tensor('decoded', decoded)
+
+            loss = criterion(decoded, decoder_out)
+
+            # Back propagate and perform optimization
+            loss.backward()
+            encoder_optimizer.step()
+            decoder_optimizer.step()
+
+            # Print log
+            processed += batch
             if i % log_interval == 0:
-                printer.print(f'Training: {processed / total:.0%} [{processed:,}/{total:,}]')
-
-            # print_loss_total += loss
-            # plot_loss_total += loss
-            #
-            # if iter % print_every == 0:
-            #     print_loss_avg = print_loss_total / print_every
-            #     print_loss_total = 0
-            #     print('%s (%d %d%%) %.4f' % (timeSince(start, iter / n_iters),
-            #                                  iter, iter / n_iters * 100, print_loss_avg))
-            #
-            # if iter % plot_every == 0:
-            #     plot_loss_avg = plot_loss_total / plot_every
-            #     plot_losses.append(plot_loss_avg)
-            #     plot_loss_total = 0
+                printer.print(f'Training: {processed / total:.1%} [{processed:,}/{total:,}]')
 
         printer.print(f'Training: completed')
     # endregion
 
     torch.save(
         (
-            hyper.hidden_state_size,
-            max_input_length,
-            ru_lang.word_counter,
-            en_lang.word_counter,
-            encoder.cpu().eval().state_dict(),
-            decoder.cpu().eval().state_dict(),
+            ru_lang.__getnewargs__(),
+            en_lang.__getnewargs__(),
+            encoder.cpu().eval().data,
+            decoder.cpu().eval().data,
         ),
-        'data.pth',
+        'data/data.pth',
     )
 
 
