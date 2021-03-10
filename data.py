@@ -48,7 +48,7 @@ class Language:
 
     def _reindex(self, /):
         self.index2word: list[str] = Special + sorted(self.word_counter)
-        self.word2index: dict[str, int] = {i: w for i, w in enumerate(self.index2word)}
+        self.word2index: dict[str, int] = {w: i for i, w in enumerate(self.index2word)}
 
     def __getnewargs__(self, /):
         return self.word_counter,
@@ -65,10 +65,14 @@ class Language:
         self._reindex()
 
     def drop_words(self, percentage: float, /) -> frozenset[str]:
+        if percentage >= 1:
+            raise ValueError(f'cannot drop all words')
+
         if percentage > 0:
             infrequent_words_n = ceil(self.words_n * percentage)
             infrequent_words = frozenset(
-                sorted(self.word_counter, key=lambda w: self.word_counter[w])[:infrequent_words_n])
+                sorted(self.word_counter, key=lambda w: self.word_counter[w])[:infrequent_words_n]
+            )
 
             for word in infrequent_words:
                 del self.word_counter[word]
@@ -76,9 +80,6 @@ class Language:
             self._reindex()
 
             return infrequent_words
-
-        if percentage >= 1:
-            raise ValueError(f'cannot drop all words')
 
         return frozenset()
 
