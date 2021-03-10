@@ -1,7 +1,7 @@
 import re
 from collections import Counter
 from collections.abc import Collection
-from math import ceil, inf
+from math import ceil
 from typing import final
 
 from torch import tensor
@@ -152,28 +152,29 @@ class RUENDataset(Dataset):
 
 @final
 class ParaCrawl(RUENDataset):
-    def __init__(self, en_ru_file: str, ru_lang: Language, en_lang: Language, /, limit: int = inf):
+    def __init__(self, en_ru_file: str, ru_lang: Language, en_lang: Language, /,
+                 data_slice: slice = slice(None)):
+        with open(en_ru_file, 'r') as f:
+            lines = f.readlines()
+
         en_list = []
         ru_list = []
-        with open(en_ru_file, 'r') as f:
-            for i, line in enumerate(f, 1):
-                if i > limit:
-                    break
-
-                en, ru = line.rstrip().split('\t')
-                en_list.append(en)
-                ru_list.append(ru)
+        for line in lines[data_slice]:
+            en, ru = line.split('\t')
+            en_list.append(en)
+            ru_list.append(ru)
 
         super().__init__(ru_list, en_list, ru_lang, en_lang)
 
 
 @final
 class Yandex(RUENDataset):
-    def __init__(self, ru_file: str, en_file: str, ru_lang: Language, en_lang: Language, /):
+    def __init__(self, ru_file: str, en_file: str, ru_lang: Language, en_lang: Language, /,
+                 data_slice: slice = slice(None)):
         with open(ru_file) as f:
-            ru_list = f.readlines()
+            ru_list = f.readlines()[data_slice]
 
         with open(en_file) as f:
-            en_list = f.readlines()
+            en_list = f.readlines()[data_slice]
 
         super().__init__(ru_list, en_list, ru_lang, en_lang)
