@@ -20,7 +20,7 @@ Pattern_spaces = re.compile(r'\s+')
 
 
 def preprocess_en(s: str, /) -> Sentence:
-    s = s.lower()
+    s = s.rstrip().lower()
     s = Pattern_ignored.sub('', s)
     words = s.split()
     for i, w in enumerate(words):
@@ -47,7 +47,7 @@ def preprocess_en(s: str, /) -> Sentence:
 
 
 def preprocess_ru(s: str, /) -> Sentence:
-    s = s.lower()
+    s = s.rstrip().lower()
     s = Pattern_ignored.sub('', s)
     words = s.split()
     for i, w in enumerate(words):
@@ -63,7 +63,7 @@ def preprocess_ru(s: str, /) -> Sentence:
 
 
 SOS = '^'
-EOS = '$'
+EOS = '@'
 NIL = '*'
 Special = [SOS, EOS, NIL]
 Token_SOS = Special.index(SOS)
@@ -160,8 +160,20 @@ class ParaCrawl(RUENDataset):
                 if i > limit:
                     break
 
-                en, ru = line.strip().split('\t')
+                en, ru = line.rstrip().split('\t')
                 en_list.append(en)
                 ru_list.append(ru)
+
+        super().__init__(ru_list, en_list, ru_lang, en_lang)
+
+
+@final
+class Yandex(RUENDataset):
+    def __init__(self, ru_file: str, en_file: str, ru_lang: Language, en_lang: Language, /):
+        with open(ru_file) as f:
+            ru_list = f.readlines()
+
+        with open(en_file) as f:
+            en_list = f.readlines()
 
         super().__init__(ru_list, en_list, ru_lang, en_lang)
