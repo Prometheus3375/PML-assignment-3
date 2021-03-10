@@ -1,9 +1,10 @@
 from math import inf
 
 import torch
+from numpy import random
 from torch import Tensor
 from torch.nn import Module, NLLLoss
-from torch.optim import Optimizer, SGD
+from torch.optim import Adam, Optimizer
 
 import hyper
 from data import EOS, Language, ParaCrawl, Token_EOS, Token_SOS
@@ -41,14 +42,23 @@ def train(
 
     decoder_hidden = encoder_hidden
 
+    teach = (
+            hyper.teaching_percentage == 1 or
+            (hyper.teaching_percentage != 0 and random.rand() <= hyper.teaching_percentage)
+    )
+
     for di in range(target_length):
         decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-        topv, topi = decoder_output.topk(1)
-        decoder_input = topi.squeeze().detach()  # detach from history as input
-
         loss += criterion(decoder_output, target_tensor[di])
-        if decoder_input.item() == Token_EOS:
-            break
+
+        if teach:
+            decoder_input = target_tensor[di]
+        else:
+            topi: Tensor
+            topv, topi = decoder_output.max()
+            decoder_input = topi.detach()  # detach from history as input
+            if decoder_input.item() == Token_EOS:
+                break
 
     loss.backward()
 
@@ -60,6 +70,10 @@ def train(
 
 @time
 def main():
+    # Fix seeds
+    torch.manual_seed(0)
+    random.seed(0)
+
     # region Prepare data
     with Timer('Data preparation time: %s'):
         ru_lang = Language()
@@ -90,8 +104,8 @@ def main():
     encoder = EncoderRNN(ru_lang.words_n, hyper.hidden_state_size).to(Device).train()
     decoder = AttnDecoderRNN(hyper.hidden_state_size, en_lang.words_n, max_output_length).to(Device).train()
 
-    encoder_optimizer = SGD(encoder.parameters(), lr=hyper.learning_rate)
-    decoder_optimizer = SGD(decoder.parameters(), lr=hyper.learning_rate)
+    encoder_optimizer = Adam(encoder.parameters(), lr=hyper.learning_rate)
+    decoder_optimizer = Adam(decoder.parameters(), lr=hyper.learning_rate)
     criterion = NLLLoss()
 
     processed = 0
