@@ -1,13 +1,112 @@
-import torch
-import torch.nn.functional as F
-from torch import Tensor, nn
+from collections import OrderedDict
 
+import torch
+from torch import Tensor, nn
+from torch.nn import functional
+
+from data import Token_PAD
 from device import Device
 
 
-class Encoder(nn.Module):
-    def __init__(self, language_: int):
-        pass
+class Model(nn.Module):
+    @property
+    def data(self, /):
+        return self.__getnewargs__(), self.state_dict()
+
+    @classmethod
+    def from_data(cls, data: tuple[tuple, OrderedDict[str, Tensor]], /):
+        args, weights = data
+        model = cls(*args)
+        model.load_state_dict(weights)
+        return model
+
+
+class RNN(Model):
+    def __init__(self, input_dim: int, hidden_dim: int, layers_count: int, bi: bool, /):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            batch_first=True,
+            num_layers=layers_count,
+            bidirectional=bi,
+        )
+
+    def __getnewargs__(self, /):
+        return self.input_dim, self.hidden_dim, self.layers_count, self.bi
+
+    @property
+    def input_dim(self, /):
+        return self.lstm.input_size
+
+    @property
+    def hidden_dim(self, /):
+        return self.lstm.hidden_size
+
+    @property
+    def layers_count(self, /):
+        return self.lstm.num_layers
+
+    @property
+    def bi(self, /):
+        return self.lstm.bidirectional
+
+    def initial_h(self, batch_size: int, /):
+        return torch.zeros(batch_size, self.layers_count * self.bi, self.hidden_dim, device=Device)
+
+    def initial_c(self, batch_size: int, /):
+        return torch.zeros(batch_size, self.layers_count * self.bi, self.hidden_dim, device=Device)
+
+
+class Encoder(RNN):
+    def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
+        self.words_n = words_n
+
+        self.embedding = nn.Embedding(
+            num_embeddings=words_n,
+            embedding_dim=embed_dim,
+            padding_idx=Token_PAD,
+        )
+
+        super().__init__(embed_dim, hidden_dim, 1, False)
+
+    def __getnewargs__(self, /):
+        return self.words_n, self.embed_dims, self.hidden_dim
+
+    def __call__(self, inp: Tensor, h: Tensor = None, c: Tensor = None) -> tuple[Tensor, Tensor, Tensor]:
+        batch = inp.size()[0]
+        if h is None:
+            h = self.initial_h(batch)
+        if c is None:
+            c = self.initial_c(batch)
+
+        embed = self.embedding(inp)
+        out, (h, c) = self.lstm(embed, h, c)
+        return out, h, c
+
+
+class Decoder(RNN):
+    def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
+        self.words_n = words_n
+
+        self.embedding = nn.Embedding(
+            num_embeddings=words_n,
+            embedding_dim=embed_dim,
+            padding_idx=Token_PAD,
+        )
+
+        super().__init__(embed_dim, hidden_dim, 1, False)
+
+        self.linear = nn.Linear(hidden_dim * (self.bi + 1), words_n)
+
+    def __getnewargs__(self, /):
+        return self.words_n, self.embed_dims, self.hidden_dim
+
+    def __call__(self, inp: Tensor, h: Tensor, c: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        embed = self.embedding(inp)
+        out, (h, c) = self.lstm(embed, h, c)
+        out = self.linear(out)
+        return out, h, c
 
 
 class EncoderRNN(nn.Module):
@@ -40,7 +139,7 @@ class DecoderRNN(nn.Module):
 
     def __call__(self, input: Tensor, hidden: Tensor, /) -> tuple[Tensor, Tensor]:
         output = self.embedding(input).view(1, 1, -1)
-        output = F.relu(output)
+        output = functional.relu(output)
         output, hidden = self.gru(output, hidden)
         output = self.softmax(self.out(output[0]))
         return output, hidden
@@ -68,16 +167,16 @@ class AttnDecoderRNN(nn.Module):
         embedded = self.embedding(input).view(1, 1, -1)
         embedded = self.dropout(embedded)
 
-        attn_weights = F.softmax(self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
+        attn_weights = functional.softmax(self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
         attn_applied = torch.bmm(attn_weights.unsqueeze(0), encoder_outputs.unsqueeze(0))
 
         output = torch.cat((embedded[0], attn_applied[0]), 1)
         output = self.attn_combine(output).unsqueeze(0)
 
-        output = F.relu(output)
+        output = functional.relu(output)
         output, hidden = self.gru(output, hidden)
 
-        output = F.log_softmax(self.out(output[0]), dim=1)
+        output = functional.log_softmax(self.out(output[0]), dim=1)
         return output, hidden, attn_weights
 
     def init_hidden(self, /):
