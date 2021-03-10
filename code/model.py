@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from typing import final
 
 import torch
 from torch import Tensor, nn
@@ -58,6 +59,7 @@ class RNN(Model):
         return torch.zeros(batch_size, self.layers_count * self.bi, self.hidden_dim, device=Device)
 
 
+@final
 class Encoder(RNN):
     def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
         self.words_n = words_n
@@ -85,6 +87,7 @@ class Encoder(RNN):
         return out, h, c
 
 
+@final
 class Decoder(RNN):
     def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
         self.words_n = words_n
