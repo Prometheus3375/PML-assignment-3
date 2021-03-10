@@ -2,17 +2,29 @@ from collections.abc import Callable
 from timeit import default_timer
 
 
-def time2m_s(seconds: float) -> tuple[int, int]:
-    seconds = round(seconds)
-    minutes = seconds // 60
-    seconds -= minutes * 60
-    return minutes, seconds
+def seconds2hms(seconds: float, /):
+    s = round(seconds)
+    h = s // 3600
+    s -= h * 3600
+    m = s // 60
+    s -= m * 60
+    return h, m, s
+
+
+def format_hms(h: int, m: int, s: int, /) -> str:
+    if h > 0:
+        return f'{h}h {m}m {s}s'
+
+    if m > 0:
+        return f'{m}m {s}s'
+
+    return f'{s}s'
 
 
 class Timer:
     __slots__ = '_start', 'message'
 
-    def __init__(self, message: str = '\nTime elapsed: %dm %ds', /):
+    def __init__(self, message: str = '\nTime elapsed: %s', /):
         self._start = 0.
         self.message = message
 
@@ -21,10 +33,11 @@ class Timer:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb, /):
-        print(self.message % time2m_s(default_timer() - self._start))
+        hms = seconds2hms(default_timer() - self._start)
+        print(self.message % format_hms(*hms))
 
 
-def time(func: Callable):
+def time(func: Callable, /):
     from functools import wraps
 
     @wraps(func)
@@ -39,8 +52,8 @@ def time(func: Callable):
             result = None
             exception = e
 
-        m, s = time2m_s(default_timer() - start)
-        print(f'\nTime elapsed: {m}m {s}s')
+        hms = seconds2hms(default_timer() - start)
+        print(f'\nTime elapsed: {format_hms(*hms)}')
 
         if exception:
             raise exception
