@@ -77,27 +77,37 @@ def token2tensor(token: int, batch: int, /):
 
 @final
 class Language:
-    __slots__ = 'word_counter', 'word2index', 'index2word',
+    __slots__ = 'word_counter', '_sentence_length', 'word2index', 'index2word',
 
-    def __init__(self, word_counter: Counter[str] = None, /):
+    def __init__(self, word_counter: Counter[str] = None, sentence_length: int = 0, /):
         self.word_counter: Counter[str] = word_counter if isinstance(word_counter, Counter) else Counter()
+        self._sentence_length = sentence_length
         self._reindex()
+
+    def __getnewargs__(self, /):
+        return self.word_counter, self._sentence_length
 
     def _reindex(self, /):
         self.index2word: list[str] = Special + sorted(self.word_counter)
         self.word2index: dict[str, int] = {w: i for i, w in enumerate(self.index2word)}
 
-    def __getnewargs__(self, /):
-        return self.word_counter,
-
     @property
     def words_n(self, /):
         return len(self.word2index)
 
+    @property
+    def sentence_length(self, /):
+        return self._sentence_length
+
     def add_sentences(self, sentences: list[Sentence], /):
         for sentence in sentences:
+            n = 0
             for word in sentence.split():
                 self.word_counter[word] += 1
+                n += 1
+
+            if n > self._sentence_length:
+                self._sentence_length = n
 
         self._reindex()
 
@@ -120,8 +130,10 @@ class Language:
 
         self._reindex()
 
-    def sentence2tokens(self, sentence: Sentence):
-        return [self.word2index.get(w, Token_NIL) for w in sentence.split()]
+    def sentence2tensor(self, sentence: Sentence):
+        indexes = [self.word2index.get(w, Token_NIL) for w in sentence.split()]
+        indexes += [Token_PAD] * (self._sentence_length - len(indexes))
+        return tensor(indexes, device=Device)
 
 
 @final
@@ -131,7 +143,6 @@ class LanguageData:
     def __init__(self, data: list[Sentence], lang: Language, /):
         self.data = data
         self.lang = lang
-        self.max_length = max(s.count(' ') for s in data) + 1
 
         lang.add_sentences(data)
 
@@ -142,8 +153,7 @@ class LanguageData:
         return iter(self.data)
 
     def __getitem__(self, index: int, /):
-        tokens = self.lang.sentence2tokens(self.data[index])
-        return tensor(tokens + [PAD] * self.max_length, device=Device)
+        return self.lang.sentence2tensor(self.data[index])
 
     def get(self, index: int, /):
         return self.data[index]
