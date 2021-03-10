@@ -12,6 +12,13 @@ _hc = tuple[Tensor, Tensor]
 
 
 class Model(nn.Module):
+    def __getattr__(self, attr: str, /):
+        # details: https://github.com/pytorch/pytorch/issues/13981
+        try:
+            return super().__getattr__(attr)
+        except AttributeError:
+            return self.__getattribute__(attr)
+
     @property
     def data(self, /):
         return self.__getnewargs__(), self.state_dict()
@@ -78,7 +85,7 @@ class Encoder(RNN):
         )
 
     def __getnewargs__(self, /):
-        return self.words_n, self.embed_dims, self.hidden_dim
+        return self.words_n, self.input_dim, self.hidden_dim
 
     def __call__(self, inp: Tensor, hc: _hc = None) -> tuple[Tensor, _hc]:
         if hc is None:
@@ -105,7 +112,7 @@ class Decoder(RNN):
         self.linear = nn.Linear(hidden_dim * (self.bi + 1), words_n)
 
     def __getnewargs__(self, /):
-        return self.words_n, self.embed_dims, self.hidden_dim
+        return self.words_n, self.input_dim, self.hidden_dim
 
     def __call__(self, inp: Tensor, hc: _hc) -> tuple[Tensor, _hc]:
         embed = self.embedding(inp)
