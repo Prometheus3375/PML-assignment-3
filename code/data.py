@@ -130,9 +130,13 @@ class Language:
 
         self._reindex()
 
-    def sentence2tensor(self, sentence: Sentence):
-        indexes = [self.word2index.get(w, Token_NIL) for w in sentence.split()]
-        indexes += [Token_PAD] * (self._sentence_length - len(indexes))
+    def sentence2tensor(self, sentence: Sentence, /, with_sos: bool = False, with_eos: bool = False):
+        indexes = [Token_SOS] if with_sos else []
+        indexes += [self.word2index.get(w, Token_NIL) for w in sentence.split()]
+        if with_eos:
+            indexes.append(Token_EOS)
+
+        indexes += [Token_PAD] * (self._sentence_length - len(indexes) + with_sos + with_eos)
         return tensor(indexes, device=Device)
 
 
@@ -152,8 +156,11 @@ class LanguageData:
     def __iter__(self, /):
         return iter(self.data)
 
-    def __getitem__(self, index: int, /):
-        return self.lang.sentence2tensor(self.data[index])
+    def get_sos(self, index: int, /):
+        return self.lang.sentence2tensor(self.data[index], with_sos=True)
+
+    def get_eos(self, index: int, /):
+        return self.lang.sentence2tensor(self.data[index], with_eos=True)
 
     def get(self, index: int, /):
         return self.data[index]
@@ -177,7 +184,11 @@ class RUENDataset(Dataset):
         return zip(self.ru, self.en)
 
     def __getitem__(self, index: int, /):
-        return self.ru[index], self.en[index]
+        return (
+            self.ru.get_eos(index),
+            self.en.get_sos(index),
+            self.en.get_eos(index),
+        )
 
     def get(self, index: int, /):
         return self.ru.get(index), self.en.get(index)
