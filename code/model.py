@@ -97,28 +97,25 @@ class Encoder(RNN):
         return self.words_n, self.input_dim, self.hidden_dim
 
     def _process_v(self, v: Tensor, fc: nn.Linear) -> Tensor:
-        # v[-2, :, :]  last forward
-        # v[-1, :, :]  last backward
-        v = torch.cat((v[-2, :, :], v[-1, :, :]), dim=1)
+        # v[0] = v[-2, :, :]  last forward
+        # v[1] = v[-1, :, :]  last backward
+        v = torch.cat((v[0], v[1]), dim=1)
         # v (batch, hidden_dim * 2)
-        v = self.linear_h(v)
+        v = fc(v)
         # v (batch, hidden_dim)
         v = torch.tanh(v)
         v = v.unsqueeze(0)
         # v (1, batch, hidden_dim)
         return v
 
-    def __call__(self, data: Tensor, lengths: Tensor, hc: _tt = None) -> tuple[Tensor, _tt]:
+    def __call__(self, data: Tensor, lengths: Tensor) -> tuple[Tensor, _tt]:
         l, b = data.size()
-
-        if hc is None:
-            hc = self.initial_hc(b)
 
         # data (words, batch)
         embed = self.embedding(data)
         # embed (words, batch, input_dim)
         seqs = pack_padded_sequence(embed, lengths, self.batch_first, False)
-        out, hc = self.lstm(seqs, hc)
+        out, hc = self.lstm(seqs)
         out, lengths = pad_packed_sequence(out, self.batch_first, Token_PAD, l)
         # out (words, batch, (bi + 1) * hidden_dim)
         # hc (layers_count * (bi + 1), batch, hidden_dim)
@@ -142,26 +139,28 @@ class Decoder(RNN):
             padding_idx=Token_PAD,
         )
 
-        self.linear = nn.Linear(hidden_dim * (self.bi + 1), words_n)
+        self.linear = nn.Linear(hidden_dim * (self.bi + 1) + embed_dim, words_n)
 
     def __getnewargs__(self, /):
         return self.words_n, self.input_dim, self.hidden_dim
 
     def __call__(self, data: Tensor, hc: _tt) -> tuple[Tensor, _tt]:
         # data (batch)
+        data = data.unsqueeze(0)
+        # data (words = 1, batch)
         embed = self.embedding(data)
-        # embed (batch, input_dim)
-        embed = embed.unsqueeze(0)
         # embed (words = 1, batch, input_dim)
         out, hc = self.lstm(embed, hc)
         # out (words = 1, batch, (bi + 1) * hidden_dim)
         # hc (layers_count * (bi + 1), batch, hidden_dim)
 
-        out = self.linear(out)
-        # out (words = 1, batch, words_n)
-        out = out.squeeze(0)
-        # out (batch, words_n)
-        return out, hc
+        result = torch.cat((out, embed), dim=2)
+        # result (words = 1, batch, (bi + 1) * hidden_dim + input_dim)
+        result = self.linear(result)
+        # result (words = 1, batch, words_n)
+        result = result.squeeze(0)
+        # result (batch, words_n)
+        return result, hc
 
 
 @final
@@ -199,7 +198,7 @@ class Seq2Seq(Model):
 
         l, b = out.size()
         predictions = torch.zeros(l, b, self.decoder.words_n, device=Device) + Token_PAD
-        inp: Tensor = out[0]
+        inp = out[0]
         # inp (batch)
         for k in range(l - 1):
             predict, hc = self.decoder(inp, hc)

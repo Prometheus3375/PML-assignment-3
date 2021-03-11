@@ -248,7 +248,7 @@ class TestDataset(Dataset):
         return iter(self.sentences)
 
     def __getitem__(self, index: int, /):
-        return self.lang.sentence2tensor(self.sentences[index], with_eos=True)
+        return self.lang.sentence2tensor(self.sentences[index], with_eos=True, with_sos=True)
 
     def get(self, index: int, /):
         return self.sentences[index]

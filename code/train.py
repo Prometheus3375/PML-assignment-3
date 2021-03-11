@@ -3,6 +3,7 @@ from math import ceil
 import torch
 from torch import Tensor
 from torch.nn import CrossEntropyLoss
+from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adam
 from torch.utils.data import ConcatDataset, DataLoader
 
@@ -85,6 +86,7 @@ def main():
                 loss = criterion(predictions, en_eos)
                 # Back propagate and perform optimization
                 loss.backward()
+                clip_grad_norm_(model.parameters(), hyper.norm_clip)
                 optimizer.step()
 
                 # Print log
