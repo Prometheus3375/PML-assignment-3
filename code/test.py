@@ -22,6 +22,8 @@ def evaluate(model: Seq2Seq, ru_lang: Language, en_lang: Language, text_path: st
     loader = DataLoader(dataset, batch)
 
     total = len(dataset)
+    log_interval = max(5, round(total / batch / 100))
+
     with torch.no_grad(), Printer() as printer, open('answer.txt', 'w') as out:
         printer.print(f'Testing: starting...')
         for i, (ru, ru_l) in enumerate(loader, 1):
@@ -41,7 +43,7 @@ def evaluate(model: Seq2Seq, ru_lang: Language, en_lang: Language, text_path: st
 
             out.write(' '.join(en_lang.index2word[i] for i in answer) + '\n')
 
-            if i % 5 == 0:
+            if i % log_interval == 0:
                 printer.print(f'Testing: {i / total:.0%} [{i:,}/{total:,}]')
 
     with ZipFile('answer.zip', 'w') as z:
