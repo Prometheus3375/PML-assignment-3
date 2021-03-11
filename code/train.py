@@ -9,7 +9,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 import hyper
 from data import Language, ParaCrawl, Token_PAD, Yandex
 from misc import Printer, Timer, time
-from model import Decoder, Encoder
+from model import Decoder, Encoder, Seq2Seq
 from utils import Device, make_determenistic
 
 
@@ -41,9 +41,14 @@ def main():
             data_slice=slice(0),
         )
 
-        infrequent_words_n = ceil(ru_lang.words_n * hyper.infrequent_words_percentage)
+        low = ru_lang.lower_than(2)
+        infrequent_words_n = max(ceil(ru_lang.words_n * hyper.infrequent_words_percent), len(low))
         ru_lang.drop_words(ru_lang.lowk(infrequent_words_n))
         print(f'{infrequent_words_n:,} infrequent Russian words are dropped')
+
+        low = en_lang.lower_than(2)
+        en_lang.drop_words(*low)
+        print(f'{len(low):,} infrequent English words are dropped')
 
         print(f'Russian language: {ru_lang.words_n:,} words, {ru_lang.sentence_length:,} words in a sentence')
         print(f'English language: {en_lang.words_n:,} words, {en_lang.sentence_length:,} words in a sentence')
@@ -56,39 +61,31 @@ def main():
     # region Models and optimizers
     encoder = Encoder(ru_lang.words_n, hyper.embed_dim, hyper.hidden_dim).to(Device).train()
     decoder = Decoder(en_lang.words_n, hyper.embed_dim, hyper.hidden_dim).to(Device).train()
+    model = Seq2Seq(encoder, decoder)
 
-    encoder_optimizer = Adam(encoder.parameters(), lr=hyper.learning_rate)
-    decoder_optimizer = Adam(decoder.parameters(), lr=hyper.learning_rate)
+    optimizer = Adam(model.parameters(), lr=hyper.learning_rate)
     criterion = CrossEntropyLoss(ignore_index=Token_PAD, reduction='sum')
     # endregion
 
     # region Training
+    teaching_percent = hyper.teaching_percent
     total = len(dataset)
     log_interval = hyper.log_interval
+
     for epoch in range(1, hyper.epochs + 1):
         processed = 0
         with Printer() as printer:
             printer.print(f'Train epoch {epoch}: starting...')
-            for i, (ru_eos_t, en_sos_t, en_eos) in enumerate(loader, 1):
-                # print_tensor(ru_eos_t[0], 'ru_eos')
-                # print_tensor(en_sos_t[0], 'en_sos')
-                # print_tensor(en_eos, 'en_eos')
-
+            for i, ((ru, ru_l), en_sos, en_eos) in enumerate(loader, 1):
                 # Zero the parameter gradients
-                encoder_optimizer.zero_grad()
-                decoder_optimizer.zero_grad()
-
-                # Run data through coders
-                encoded, hc = encoder(ru_eos_t)
-                decoded, hc = decoder(en_sos_t, hc)
-                # print_tensor(decoded, 'decoded')
-
-                loss = criterion(decoded, en_eos)
-
+                optimizer.zero_grad()
+                # Run data through model
+                predictions = model(ru, ru_l, en_sos, teaching_percent)
+                # Calculate loss
+                loss = criterion(predictions, en_eos)
                 # Back propagate and perform optimization
                 loss.backward()
-                encoder_optimizer.step()
-                decoder_optimizer.step()
+                optimizer.step()
 
                 # Print log
                 processed += batch
@@ -102,8 +99,7 @@ def main():
         (
             ru_lang.__getnewargs__(),
             en_lang.__getnewargs__(),
-            encoder.cpu().eval().data,
-            decoder.cpu().eval().data,
+            model.cpu().eval().data,
         ),
         'data/data.pth',
     )
