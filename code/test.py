@@ -6,12 +6,11 @@ from torch.utils.data import DataLoader
 from data import Language, TestDataset, Token_EOS, Token_SOS, token2tensor
 from misc import Printer, time
 from model import Seq2Seq
-from utils import Device, make_determenistic
+from utils import Device, make_deterministic
 
 
 def evaluate(model: Seq2Seq, ru_lang: Language, en_lang: Language, text_path: str, /,
              data_slice: slice = slice(None)):
-    make_determenistic()
     model.eval()
 
     dataset = TestDataset(
@@ -50,6 +49,7 @@ def evaluate(model: Seq2Seq, ru_lang: Language, en_lang: Language, text_path: st
 
 @time
 def main(data_path: str, text_path: str, /):
+    make_deterministic()
     ru_args, en_args, model_data = torch.load(data_path)
 
     ru_lang = Language(*ru_args)

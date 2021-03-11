@@ -12,7 +12,7 @@ from data import Language, ParaCrawl, Token_PAD, Yandex
 from misc import Printer, Timer, time
 from model import Attention, Decoder, Encoder, Seq2Seq
 from test import evaluate
-from utils import Device, make_determenistic
+from utils import Device, make_deterministic
 
 
 def print_tensor(t: Tensor, name: str = 'tensor'):
@@ -21,7 +21,7 @@ def print_tensor(t: Tensor, name: str = 'tensor'):
 
 @time
 def main():
-    make_determenistic()
+    make_deterministic()
 
     # region Prepare data
     with Timer('\nData preparation time: %s\n'):
