@@ -9,15 +9,15 @@ from model import Seq2Seq
 from utils import Device, make_determenistic
 
 
-def evaluate(model: Seq2Seq, ru_lang: Language, en_lang: Language, text_path: str, /):
+def evaluate(model: Seq2Seq, ru_lang: Language, en_lang: Language, text_path: str, /,
+             data_slice: slice = slice(None)):
     make_determenistic()
     model.eval()
 
     dataset = TestDataset(
         text_path,
         ru_lang,
-        # data_slice=slice(hyper.dataset_slice.stop + 1, hyper.dataset_slice.stop + 1 + 100),
-        # data_slice=slice(100),
+        data_slice=data_slice,
     )
     batch = 1
     loader = DataLoader(dataset, batch)
