@@ -96,7 +96,8 @@ class Encoder(RNN):
     def __getnewargs__(self, /):
         return self.words_n, self.input_dim, self.hidden_dim
 
-    def _process_v(self, v: Tensor, fc: nn.Linear) -> Tensor:
+    @staticmethod
+    def _process_v(v: Tensor, fc: nn.Linear) -> Tensor:
         # v[0] = v[-2, :, :]  last forward
         # v[1] = v[-1, :, :]  last backward
         v = torch.cat((v[0], v[1]), dim=1)
@@ -123,13 +124,55 @@ class Encoder(RNN):
         h = self._process_v(h, self.linear_h)
         c = self._process_v(c, self.linear_c)
         # hc (1, batch, hidden_dim)
+        out = out.transpose(0, 1)
+        # out (batch, words, (bi + 1) * hidden_dim)
         return out, (h, c)
+
+
+@final
+class Attention(Model):
+    def __init__(self, hidden_dim: int, /):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+
+        self.attn = nn.Linear(hidden_dim * 3, hidden_dim)
+        self.v = nn.Linear(hidden_dim, 1, bias=False)
+        self.softmax = nn.Softmax(1)
+
+    def __getnewargs__(self, /):
+        return self.encoder_hidden_dim, self.decoder_hidden_dim
+
+    def __call__(self, encoder_out: Tensor, mask: Tensor, v: Tensor, /):
+        # v (1, batch, hidden_dim)
+        # encoder_out (batch, words, 2 * hidden_dim)
+
+        l = encoder_out.size()[1]
+
+        v = v.transpose(0, 1)
+        # v (batch, 1, hidden_dim)
+        v = v.repeat(1, l, 1)
+        # v (batch, words, hidden_dim)
+
+        en = torch.cat((v, encoder_out), dim=2)
+        # en (batch, words, hidden_dim * 3)
+        en = self.attn(en)
+        # en (batch, words, hidden_dim)
+        en = torch.tanh(en)
+
+        attention = self.v(en)
+        # attention (batch, words, 1)
+        attention = attention.squeeze(2)
+        # attention (batch, words)
+        attention.masked_fill_(mask == 0, -1e10)
+        attention = self.softmax(attention)
+
+        return attention
 
 
 @final
 class Decoder(RNN):
     def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
-        super().__init__(embed_dim, hidden_dim, 1, False)
+        super().__init__(embed_dim + hidden_dim * 2, hidden_dim, 1, False)
 
         self.words_n = words_n
 
@@ -139,23 +182,27 @@ class Decoder(RNN):
             padding_idx=Token_PAD,
         )
 
-        self.linear = nn.Linear(hidden_dim * (self.bi + 1) + embed_dim, words_n)
+        self.linear = nn.Linear(hidden_dim * 2 + hidden_dim * (self.bi + 1) + embed_dim, words_n)
 
     def __getnewargs__(self, /):
         return self.words_n, self.input_dim, self.hidden_dim
 
-    def __call__(self, data: Tensor, hc: _tt) -> tuple[Tensor, _tt]:
+    def __call__(self, data: Tensor, weighted: Tensor, hc: _tt) -> tuple[Tensor, _tt]:
+        # weighted (1, batch, hidden_dim * 2)
         # data (batch)
         data = data.unsqueeze(0)
         # data (words = 1, batch)
         embed = self.embedding(data)
         # embed (words = 1, batch, input_dim)
-        out, hc = self.lstm(embed, hc)
+
+        inp = torch.cat((embed, weighted), dim=2)
+        # embed (words = 1, batch, input_dim + hidden_dim * 2)
+        out, hc = self.lstm(inp, hc)
         # out (words = 1, batch, (bi + 1) * hidden_dim)
         # hc (layers_count * (bi + 1), batch, hidden_dim)
 
-        result = torch.cat((out, embed), dim=2)
-        # result (words = 1, batch, (bi + 1) * hidden_dim + input_dim)
+        result = torch.cat((out, weighted, embed), dim=2)
+        # result (words = 1, batch, (bi + 1) * hidden_dim + hidden_dim * 2 + input_dim)
         result = self.linear(result)
         # result (words = 1, batch, words_n)
         result = result.squeeze(0)
@@ -165,22 +212,23 @@ class Decoder(RNN):
 
 @final
 class Seq2Seq(Model):
-    def __init__(self, encoder: Encoder, decoder: Decoder, /):
+    def __init__(self, encoder: Encoder, attention: Attention, decoder: Decoder, /):
         super().__init__()
         self.encoder = encoder
+        self.attention = attention
         self.decoder = decoder
 
     def __getnewargs__(self, /):
-        return self.encoder, self.decoder
+        return self.encoder, self.attention, self.decoder
 
     @property
     def data(self, /):
-        return self.encoder.data, self.decoder.data
+        return self.encoder.data, self.attention.data, self.decoder.data
 
     @classmethod
-    def from_data(cls, data: tuple[tuple, tuple], /):
-        encoder, decoder = data
-        return cls(Encoder.from_data(encoder), Decoder.from_data(decoder))
+    def from_data(cls, data: tuple[tuple, tuple, tuple], /):
+        encoder, attention, decoder = data
+        return cls(Encoder.from_data(encoder), Attention.from_data(attention), Decoder.from_data(decoder))
 
     @staticmethod
     def teach(teaching_percent: float, /):
@@ -189,23 +237,42 @@ class Seq2Seq(Model):
                 (teaching_percent > 0 and random.rand() < teaching_percent)
         )
 
+    def _eval_weighted(self, encoder_out: Tensor, mask: Tensor, v: Tensor) -> Tensor:
+        a = self.attention(encoder_out, mask, v)
+        # a (batch, words)
+        a = a.unsqueeze(1)
+        # attention (batch, 1, words)
+        weighted = torch.bmm(a, encoder_out)
+        # weighted (batch, 1, 2 * hidden_dim)
+        weighted = weighted.transpose(0, 1)
+        # weighted (1, batch, 2 * hidden_dim)
+        return weighted
+
     def __call__(self, inp: Tensor, inp_lengths: Tensor, out: Tensor, teaching_percent: float, /) -> Tensor:
+        mask = inp != Token_PAD
+        # mask (batch, words)
+
         # (batch, words) -> (words, batch)
         inp = inp.transpose(0, 1)
         out = out.transpose(0, 1)
 
         encoded, hc = self.encoder(inp, inp_lengths)
+        # encoded (batch, words, 2 * hidden_dim)
 
         l, b = out.size()
         predictions = torch.zeros(l, b, self.decoder.words_n, device=Device) + Token_PAD
         inp = out[0]
         # inp (batch)
+        weighted = self._eval_weighted(encoded, mask, hc[0])
+        # weighted (1, batch, 2 * hidden_dim)
         for k in range(l - 1):
-            predict, hc = self.decoder(inp, hc)
+            predict, hc = self.decoder(inp, weighted, hc)
             predictions[k] = predict
-            inp = out[k + 1] if self.teach(teaching_percent) else predict.argmax(1)
 
-        predict, hc = self.decoder(inp, hc)
+            inp = out[k + 1] if self.teach(teaching_percent) else predict.argmax(1)
+            weighted = self._eval_weighted(encoded, mask, hc[0])
+
+        predict, hc = self.decoder(inp, weighted, hc)
         predictions[-1] = predict
         # predictions (words, batch, words_n)
 
