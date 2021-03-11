@@ -45,7 +45,7 @@ class RNN(Model):
         )
 
     def __getnewargs__(self, /):
-        return self.input_dim, self.hidden_dim, self.layers_count, self.bi, self.batch_first
+        return self.input_dim, self.hidden_dim, self.layers_count, self.bi, self.batch_first,
 
     @property
     def input_dim(self, /):
@@ -67,13 +67,18 @@ class RNN(Model):
     def batch_first(self, /):
         return self.rnn.batch_first
 
+    @property
+    def hd(self, /):
+        return self.hidden_dim * (self.bi + 1)
+
 
 @final
 class Encoder(RNN):
-    def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
-        super().__init__(embed_dim, hidden_dim, bi=True)
+    def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, bi: bool, decoder_hd: int, /):
+        super().__init__(embed_dim, hidden_dim, bi=bi)
 
         self.words_n = words_n
+        self.decoder_hd = decoder_hd
 
         self.embedding = nn.Embedding(
             num_embeddings=words_n,
@@ -82,65 +87,72 @@ class Encoder(RNN):
         )
         self.dropout = nn.Dropout()
 
-        self.linear = nn.Linear(hidden_dim * (self.bi + 1), hidden_dim)
+        self.linear = nn.Linear(self.hd, decoder_hd)
 
     def __getnewargs__(self, /):
-        return self.words_n, self.input_dim, self.hidden_dim
+        return self.words_n, self.embedding.embedding_dim, self.hidden_dim, self.bi, self.decoder_hd,
 
     def __call__(self, data: Tensor, lengths: Tensor) -> tuple[Tensor, Tensor]:
         l, b = data.size()
 
         # data (words, batch)
         embed = self.embedding(data)
-        # embed (words, batch, input_dim)
+        # embed (words, batch, embedding_dim)
         embed = self.dropout(embed)
         seqs = pack_padded_sequence(embed, lengths, self.batch_first, False)
         out, h = self.rnn(seqs)
-        out, lengths = pad_packed_sequence(out, self.batch_first, Token_PAD, l)
-        # out (words, batch, (bi + 1) * hidden_dim)
         # h (layers_count * (bi + 1), batch, hidden_dim)
-        # h[0] last forward
-        # h[1] last backward
-        h = torch.cat((h[0], h[1]), dim=1)
-        # h (batch, hidden_dim * 2)
+        out, lengths = pad_packed_sequence(out, self.batch_first, Token_PAD, l)
+        # out (words, batch, hd)
+        out = out.transpose(0, 1)
+        # out (batch, words, hd)
+
+        if self.bi:
+            # h[0] last forward
+            # h[1] last backward
+            h = torch.cat((h[0], h[1]), dim=1)
+            # h (batch, hidden_dim * 2)
+        else:
+            h = h[0]
+            # h (batch, hidden_dim)
+
         h = self.linear(h)
-        # v (batch, hidden_dim)
+        # v (batch, decoder_hd)
         h = torch.tanh(h)
         h = h.unsqueeze(0)
-        # h (1, batch, hidden_dim)
-        out = out.transpose(0, 1)
-        # out (batch, words, (bi + 1) * hidden_dim)
+        # h (1, batch, decoder_hd)
         return out, h
 
 
 @final
 class Attention(Model):
-    def __init__(self, hidden_dim: int, /):
+    def __init__(self, encoder_hd: int, decoder_hd: int, /):
         super().__init__()
-        self.hidden_dim = hidden_dim
+        self.encoder_hd = encoder_hd
+        self.decoder_hd = decoder_hd
 
-        self.attn = nn.Linear(hidden_dim * 3, hidden_dim)
-        self.v = nn.Linear(hidden_dim, 1, bias=False)
+        self.attn = nn.Linear(decoder_hd + encoder_hd, decoder_hd)
+        self.v = nn.Linear(decoder_hd, 1, bias=False)
         self.softmax = nn.Softmax(1)
 
     def __getnewargs__(self, /):
-        return self.hidden_dim,
+        return self.encoder_hd, self.decoder_hd,
 
     def __call__(self, encoder_out: Tensor, mask: Tensor, v: Tensor, /):
-        # v (1, batch, hidden_dim)
-        # encoder_out (batch, words, 2 * hidden_dim)
+        # v (1, batch, decoder_hd)
+        # encoder_out (batch, words, encoder_hd)
 
         l = encoder_out.size()[1]
 
         v = v.transpose(0, 1)
-        # v (batch, 1, hidden_dim)
+        # v (batch, 1, decoder_hd)
         v = v.repeat(1, l, 1)
-        # v (batch, words, hidden_dim)
+        # v (batch, words, decoder_hd)
 
         en = torch.cat((v, encoder_out), dim=2)
-        # en (batch, words, hidden_dim * 3)
+        # en (batch, words, decoder_hd + encoder_hd)
         en = self.attn(en)
-        # en (batch, words, hidden_dim)
+        # en (batch, words, decoder_hd)
         en = torch.tanh(en)
 
         attention = self.v(en)
@@ -155,10 +167,11 @@ class Attention(Model):
 
 @final
 class Decoder(RNN):
-    def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
-        super().__init__(embed_dim + hidden_dim * 2, hidden_dim, 1, False)
+    def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, encoder_hd: int, /):
+        super().__init__(embed_dim + encoder_hd, hidden_dim)
 
         self.words_n = words_n
+        self.encoder_hd = encoder_hd
 
         self.embedding = nn.Embedding(
             num_embeddings=words_n,
@@ -167,28 +180,28 @@ class Decoder(RNN):
         )
         self.dropout = nn.Dropout()
 
-        self.linear = nn.Linear(hidden_dim * 2 + hidden_dim * (self.bi + 1) + embed_dim, words_n)
+        self.linear = nn.Linear(self.hd + encoder_hd + embed_dim, words_n)
 
     def __getnewargs__(self, /):
-        return self.words_n, self.input_dim - self.hidden_dim * 2, self.hidden_dim
+        return self.words_n, self.embedding.embedding_dim, self.hidden_dim, self.encoder_hd,
 
     def __call__(self, data: Tensor, weighted: Tensor, h: Tensor) -> tuple[Tensor, Tensor]:
-        # weighted (1, batch, hidden_dim * 2)
+        # weighted (1, batch, encoder_hd)
         # data (batch)
         data = data.unsqueeze(0)
         # data (words = 1, batch)
         embed = self.embedding(data)
-        # embed (words = 1, batch, input_dim)
+        # embed (words = 1, batch, embedding_dim)
         embed = self.dropout(embed)
 
         inp = torch.cat((embed, weighted), dim=2)
-        # embed (words = 1, batch, input_dim + hidden_dim * 2)
+        # embed (words = 1, batch, embedding_dim + encoder_hd)
         out, h = self.rnn(inp, h)
-        # out (words = 1, batch, (bi + 1) * hidden_dim)
+        # out (words = 1, batch, hd)
         # h (layers_count * (bi + 1), batch, hidden_dim)
 
         result = torch.cat((out, weighted, embed), dim=2)
-        # result (words = 1, batch, (bi + 1) * hidden_dim + hidden_dim * 2 + input_dim)
+        # result (words = 1, batch, hd + encoder_hd + embedding_dim)
         result = self.linear(result)
         # result (words = 1, batch, words_n)
         result = result.squeeze(0)
@@ -229,9 +242,9 @@ class Seq2Seq(Model):
         a = a.unsqueeze(1)
         # attention (batch, 1, words)
         weighted = torch.bmm(a, encoder_out)
-        # weighted (batch, 1, 2 * hidden_dim)
+        # weighted (batch, 1, encoder_hd)
         weighted = weighted.transpose(0, 1)
-        # weighted (1, batch, 2 * hidden_dim)
+        # weighted (1, batch, encoder_hd)
         return weighted
 
     def __call__(self, inp: Tensor, inp_lengths: Tensor, out: Tensor, teaching_percent: float, /) -> Tensor:
@@ -243,14 +256,14 @@ class Seq2Seq(Model):
         out = out.transpose(0, 1)
 
         encoded, h = self.encoder(inp, inp_lengths)
-        # encoded (batch, words, 2 * hidden_dim)
+        # encoded (batch, words, encoder_hd)
 
         l, b = out.size()
         predictions = torch.zeros(l, b, self.decoder.words_n, device=Device) + Token_PAD
         inp = out[0]
         # inp (batch)
         weighted = self._eval_weighted(encoded, mask, h)
-        # weighted (1, batch, 2 * hidden_dim)
+        # weighted (1, batch, encoder_hd)
         for k in range(l - 1):
             predict, h = self.decoder(inp, weighted, h)
             predictions[k] = predict
