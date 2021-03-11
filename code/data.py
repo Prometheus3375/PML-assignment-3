@@ -26,7 +26,7 @@ def preprocess_en(s: str, /) -> Sentence:
         w = w.strip(",.:'’")
 
         if Pattern_number.fullmatch(w):
-            pass
+            w = Pattern_not_alpha.sub('', w)
         elif m := Pattern_en_postfixes.fullmatch(w):
             w = m.group(1)
         elif w.endswith("n't"):
@@ -52,7 +52,9 @@ def preprocess_ru(s: str, /) -> Sentence:
     for i, w in enumerate(words):
         w = w.strip(",.:'’")
 
-        if not Pattern_number.fullmatch(w):
+        if Pattern_number.fullmatch(w):
+            w = Pattern_not_alpha.sub('', w)
+        else:
             w = Pattern_not_alpha.sub(' ', w).strip()
             w = Pattern_spaces.sub(' ', w)
 
