@@ -140,7 +140,7 @@ class Attention(Model):
         self.softmax = nn.Softmax(1)
 
     def __getnewargs__(self, /):
-        return self.encoder_hidden_dim, self.decoder_hidden_dim
+        return self.hidden_dim
 
     def __call__(self, encoder_out: Tensor, mask: Tensor, v: Tensor, /):
         # v (1, batch, hidden_dim)
