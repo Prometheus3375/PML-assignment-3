@@ -10,3 +10,11 @@ def make_determenistic(seed: int = 0):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
+
+
+def enable_cudnn():
+    torch.backends.cudnn.enabled = True
+
+
+def disable_cudnn():
+    torch.backends.cudnn.enabled = False
