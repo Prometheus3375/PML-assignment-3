@@ -10,7 +10,7 @@ import hyper
 from data import Language, ParaCrawl, Token_PAD, Yandex
 from misc import Printer, Timer, time
 from model import Decoder, Encoder
-from utils import Device, fix_random
+from utils import Device, make_determenistic
 
 
 def print_tensor(t: Tensor, name: str = 'tensor'):
@@ -19,7 +19,7 @@ def print_tensor(t: Tensor, name: str = 'tensor'):
 
 @time
 def main():
-    fix_random()
+    make_determenistic()
 
     # region Prepare data
     with Timer('\nData preparation time: %s\n'):
