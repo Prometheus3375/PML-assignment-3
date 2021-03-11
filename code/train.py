@@ -13,7 +13,7 @@ from model import Decoder, Encoder
 from utils import Device, make_determenistic
 
 
-def print_tensor(t: Tensor, name: str = 'tensor'):
+def print_tensor(t, name='tensor'):
     print(f'\n{name} of size {tuple(t.size())}\n{t}')
 
 

@@ -1,6 +1,6 @@
 import re
 from collections import Counter
-from typing import final
+
 
 from torch import Tensor, tensor
 from torch.utils.data import Dataset
@@ -17,16 +17,16 @@ Pattern_not_alpha = re.compile(r'\W+')
 Pattern_spaces = re.compile(r'\s+')
 
 
-def preprocess_en(s: str, /) -> Sentence:
+def preprocess_en(s) -> Sentence:
     s = s.rstrip().lower()
     s = Pattern_ignored.sub('', s)
     words = s.split()
     for i, w in enumerate(words):
         w = w.strip(",.:'’")
-
+        m = Pattern_en_postfixes.fullmatch(w)
         if Pattern_number.fullmatch(w):
             pass
-        elif m := Pattern_en_postfixes.fullmatch(w):
+        elif m:
             w = m.group(1)
         elif w.endswith("n't"):
             if w == "won't":
@@ -44,7 +44,7 @@ def preprocess_en(s: str, /) -> Sentence:
     return ' '.join(words)
 
 
-def preprocess_ru(s: str, /) -> Sentence:
+def preprocess_ru(s) -> Sentence:
     s = s.rstrip().lower()
     s = Pattern_ignored.sub('', s)
     words = s.split()
@@ -71,35 +71,35 @@ Token_EOS = Special.index(EOS)
 Token_NIL = Special.index(NIL)
 
 
-def token2tensor(token: int, batch: int, /):
+def token2tensor(token, batch):
     return tensor([[token] for _ in range(batch)], device=Device)
 
 
-@final
+
 class Language:
     __slots__ = 'word_counter', '_sentence_length', 'word2index', 'index2word',
 
-    def __init__(self, word_counter: Counter[str] = None, sentence_length: int = 0, /):
+    def __init__(self, word_counter=None, sentence_length=0):
         self.word_counter: Counter[str] = word_counter if isinstance(word_counter, Counter) else Counter()
         self._sentence_length = sentence_length
         self._reindex()
 
-    def __getnewargs__(self, /):
+    def __getnewargs__(self):
         return self.word_counter, self._sentence_length
 
-    def _reindex(self, /):
+    def _reindex(self):
         self.index2word: list[str] = Special + sorted(self.word_counter)
         self.word2index: dict[str, int] = {w: i for i, w in enumerate(self.index2word)}
 
     @property
-    def words_n(self, /):
+    def words_n(self):
         return len(self.word2index)
 
     @property
-    def sentence_length(self, /):
+    def sentence_length(self):
         return self._sentence_length
 
-    def add_sentences(self, sentences: list[Sentence], /):
+    def add_sentences(self, sentences):
         for sentence in sentences:
             n = 0
             for word in sentence.split():
@@ -111,26 +111,26 @@ class Language:
 
         self._reindex()
 
-    def topk(self, k: int, /):
+    def topk(self, k):
         return frozenset(sorted(
             self.word_counter,
             key=lambda w: self.word_counter[w],
             reverse=True,
         )[:k])
 
-    def lowk(self, k: int, /):
+    def lowk(self, k):
         return frozenset(sorted(
             self.word_counter,
             key=lambda w: self.word_counter[w],
         )[:k])
 
-    def drop_words(self, /, *words: str):
+    def drop_words(self, *words):
         for word in words:
             del self.word_counter[word]
 
         self._reindex()
 
-    def sentence2tensor(self, sentence: Sentence, /, with_sos: bool = False, with_eos: bool = False):
+    def sentence2tensor(self, sentence, with_sos=False, with_eos=False):
         indexes = [Token_SOS] if with_sos else []
         indexes += [self.word2index.get(w, Token_NIL) for w in sentence.split()]
         if with_eos:
@@ -141,34 +141,34 @@ class Language:
         return tensor(indexes, device=Device), tensor(l)
 
 
-@final
+
 class LanguageData:
     __slots__ = 'data', 'lang', 'max_length',
 
-    def __init__(self, data: list[Sentence], lang: Language, /):
+    def __init__(self, data, lang):
         self.data = data
         self.lang = lang
 
         lang.add_sentences(data)
 
-    def __len__(self, /):
+    def __len__(self):
         return len(self.data)
 
-    def __iter__(self, /):
+    def __iter__(self):
         return iter(self.data)
 
-    def get_sos(self, index: int, /):
+    def get_sos(self, index):
         return self.lang.sentence2tensor(self.data[index], with_sos=True)
 
-    def get_eos(self, index: int, /):
+    def get_eos(self, index):
         return self.lang.sentence2tensor(self.data[index], with_eos=True)
 
-    def get(self, index: int, /):
+    def get(self, index):
         return self.data[index]
 
 
 class RUENDataset(Dataset):
-    def __init__(self, ru: list[str], en: list[str], ru_lang: Language, en_lang: Language, /):
+    def __init__(self, ru, en, ru_lang, en_lang):
         if len(ru) != len(en):
             raise ValueError(f'different number of sentences: ru ({len(ru):,}) and en ({len(en):,})')
 
@@ -178,27 +178,27 @@ class RUENDataset(Dataset):
         self.ru = LanguageData([preprocess_ru(s) for s in ru], ru_lang)
         self.en = LanguageData([preprocess_en(s) for s in en], en_lang)
 
-    def __len__(self, /):
+    def __len__(self):
         return len(self.ru)
 
-    def __iter__(self, /):
+    def __iter__(self):
         return zip(self.ru, self.en)
 
-    def __getitem__(self, index: int, /) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor], Tensor]:
+    def __getitem__(self, index):
         return (
             self.ru.get_eos(index),
             self.en.get_sos(index),
             self.en.get_eos(index)[0],
         )
 
-    def get(self, index: int, /):
+    def get(self, index):
         return self.ru.get(index), self.en.get(index)
 
 
-@final
+
 class ParaCrawl(RUENDataset):
-    def __init__(self, en_ru_file: str, ru_lang: Language, en_lang: Language, /,
-                 data_slice: slice = slice(None)):
+    def __init__(self, en_ru_file, ru_lang, en_lang,
+                 data_slice=None):
         with open(en_ru_file, 'r') as f:
             lines = f.readlines()
 
@@ -212,10 +212,10 @@ class ParaCrawl(RUENDataset):
         super().__init__(ru_list, en_list, ru_lang, en_lang)
 
 
-@final
+
 class Yandex(RUENDataset):
-    def __init__(self, ru_file: str, en_file: str, ru_lang: Language, en_lang: Language, /,
-                 data_slice: slice = slice(None)):
+    def __init__(self, ru_file, en_file, ru_lang, en_lang,
+                 data_slice=None):
         with open(ru_file) as f:
             ru_list = f.readlines()[data_slice]
 
@@ -225,23 +225,23 @@ class Yandex(RUENDataset):
         super().__init__(ru_list, en_list, ru_lang, en_lang)
 
 
-@final
+
 class TestDataset(Dataset):
-    def __init__(self, file: str, lang: Language):
+    def __init__(self, file, lang):
         with open(file) as f:
             lines = f.readlines()
 
         self.sentences = [preprocess_ru(s) for s in lines]
         self.lang = lang
 
-    def __len__(self, /):
+    def __len__(self):
         return len(self.sentences)
 
-    def __iter__(self, /):
+    def __iter__(self):
         return iter(self.sentences)
 
-    def __getitem__(self, index: int, /):
+    def __getitem__(self, index):
         return self.lang.sentence2tensor(self.sentences[index], with_eos=True)
 
-    def get(self, index: int, /):
+    def get(self, index):
         return self.sentences[index]

@@ -2,7 +2,7 @@ from collections.abc import Callable
 from timeit import default_timer
 
 
-def seconds2hms(seconds: float, /):
+def seconds2hms(seconds):
     s = round(seconds)
     h = s // 3600
     s -= h * 3600
@@ -11,7 +11,7 @@ def seconds2hms(seconds: float, /):
     return h, m, s
 
 
-def format_hms(h: int, m: int, s: int, /) -> str:
+def format_hms(h, m, s):
     if h > 0:
         return f'{h}h {m}m {s}s'
 
@@ -24,20 +24,20 @@ def format_hms(h: int, m: int, s: int, /) -> str:
 class Timer:
     __slots__ = '_start', 'message'
 
-    def __init__(self, message: str = '\nTime elapsed: %s', /):
+    def __init__(self, message='\nTime elapsed: %s'):
         self._start = 0.
         self.message = message
 
-    def __enter__(self, /):
+    def __enter__(self):
         self._start = default_timer()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb, /):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         hms = seconds2hms(default_timer() - self._start)
         print(self.message % format_hms(*hms))
 
 
-def time(func: Callable, /):
+def time(func: Callable):
     from functools import wraps
 
     @wraps(func)
@@ -65,16 +65,16 @@ def time(func: Callable, /):
 class Printer:
     __slots__ = '_line_length',
 
-    def __init__(self, /):
+    def __init__(self):
         self._line_length = 0
 
-    def __enter__(self, /):
+    def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb, /):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         print()
 
-    def print(self, message: str, /):
+    def print(self, message):
         pad_size = self._line_length - len(message)
         if pad_size > 0:
             pad = ' ' * pad_size
