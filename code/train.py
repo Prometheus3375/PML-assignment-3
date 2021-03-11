@@ -79,7 +79,6 @@ def main():
     log_interval = hyper.log_interval
 
     for epoch in range(1, hyper.epochs + 1):
-        processed = 0
         with Printer() as printer:
             printer.print(f'Train epoch {epoch}: starting...')
             for i, ((ru, ru_l), en_sos, en_eos) in enumerate(loader, 1):
@@ -95,9 +94,8 @@ def main():
                 optimizer.step()
 
                 # Print log
-                processed += batch
                 if i % log_interval == 0:
-                    printer.print(f'Train epoch {epoch}: {processed / total:.1%} [{processed:,}/{total:,}]')
+                    printer.print(f'Train epoch {epoch}: {i * batch / total:.1%} [{i * batch:,}/{total:,}]')
 
             printer.print(f'Train epoch {epoch}: completed')
     # endregion
