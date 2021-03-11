@@ -1,73 +1,16 @@
 from math import ceil
 
 import torch
-from numpy import random
 from torch import Tensor
-from torch.nn import CrossEntropyLoss, Module
-from torch.optim import Adam, Optimizer
+from torch.nn import CrossEntropyLoss
+from torch.optim import Adam
 from torch.utils.data import ConcatDataset, DataLoader
 
 import hyper
-from data import Language, ParaCrawl, Token_EOS, Token_PAD, Token_SOS, Yandex
+from data import Language, ParaCrawl, Token_PAD, Yandex
 from misc import Printer, Timer, time
-from model import AttnDecoderRNN, Decoder, Encoder, EncoderRNN
+from model import Decoder, Encoder
 from utils import Device, fix_random
-
-
-def train(
-        input_tensor: Tensor,
-        target_tensor: Tensor,
-        encoder: EncoderRNN,
-        decoder: AttnDecoderRNN,
-        encoder_optimizer: Optimizer,
-        decoder_optimizer: Optimizer,
-        criterion: Module,
-):
-    encoder_hidden = encoder.init_hidden()
-
-    encoder_optimizer.zero_grad()
-    decoder_optimizer.zero_grad()
-
-    input_length = input_tensor.size()[0]
-    target_length = target_tensor.size()[0]
-
-    encoder_outputs = torch.zeros(decoder.max_length, encoder.hidden_size, device=Device)
-
-    loss: Tensor = 0
-
-    for ei in range(input_length):
-        encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_hidden)
-        encoder_outputs[ei] = encoder_output[0, 0]
-
-    decoder_input = torch.tensor([[Token_SOS]], device=Device)
-
-    decoder_hidden = encoder_hidden
-
-    teach = (
-            hyper.teaching_percentage == 1 or
-            (hyper.teaching_percentage != 0 and random.rand() <= hyper.teaching_percentage)
-    )
-
-    for di in range(target_length):
-        decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-        loss += criterion(decoder_output, target_tensor[di])
-
-        if teach:
-            decoder_input = target_tensor[di]
-        else:
-            topi: Tensor
-            topv, topi = decoder_output.topk(1)
-            decoder_input = topi.squeeze().detach()  # detach from history as input
-
-            if decoder_input.item() == Token_EOS:
-                break
-
-    loss.backward()
-
-    encoder_optimizer.step()
-    decoder_optimizer.step()
-
-    return loss.item() / target_length
 
 
 def print_tensor(t: Tensor, name: str = 'tensor'):
@@ -116,44 +59,43 @@ def main():
 
     encoder_optimizer = Adam(encoder.parameters(), lr=hyper.learning_rate)
     decoder_optimizer = Adam(decoder.parameters(), lr=hyper.learning_rate)
-    criterion = CrossEntropyLoss(ignore_index=Token_PAD)
+    criterion = CrossEntropyLoss(ignore_index=Token_PAD, reduction='sum')
     # endregion
 
     # region Training
-
-    processed = 0
     total = len(dataset)
     log_interval = hyper.log_interval
+    for epoch in range(1, hyper.epochs + 1):
+        processed = 0
+        with Printer() as printer:
+            printer.print(f'Train epoch {epoch}: starting...')
+            for i, (ru_eos_t, en_sos_t, en_eos) in enumerate(loader, 1):
+                # print_tensor(ru_eos_t[0], 'ru_eos')
+                # print_tensor(en_sos_t[0], 'en_sos')
+                # print_tensor(en_eos, 'en_eos')
 
-    with Printer() as printer:
-        printer.print(f'Training: starting...')
-        for i, (ru_eos, en_sos, en_eos) in enumerate(loader, 1):
-            # print_tensor(ru_eos, 'ru_eos')
-            # print_tensor(en_sos, 'en_sos')
-            # print_tensor(en_eos, 'en_eos')
+                # Zero the parameter gradients
+                encoder_optimizer.zero_grad()
+                decoder_optimizer.zero_grad()
 
-            # Zero the parameter gradients
-            encoder_optimizer.zero_grad()
-            decoder_optimizer.zero_grad()
+                # Run data through coders
+                encoded, hc = encoder(ru_eos_t)
+                decoded, hc = decoder(en_sos_t, hc)
+                # print_tensor(decoded, 'decoded')
 
-            # Run data through coders
-            encoded, hc = encoder(ru_eos)
-            decoded, hc = decoder(en_sos, hc)
-            # print_tensor(decoded, 'decoded')
+                loss = criterion(decoded, en_eos)
 
-            loss = criterion(decoded, en_eos)
+                # Back propagate and perform optimization
+                loss.backward()
+                encoder_optimizer.step()
+                decoder_optimizer.step()
 
-            # Back propagate and perform optimization
-            loss.backward()
-            encoder_optimizer.step()
-            decoder_optimizer.step()
+                # Print log
+                processed += batch
+                if i % log_interval == 0:
+                    printer.print(f'Train epoch {epoch}: {processed / total:.1%} [{processed:,}/{total:,}]')
 
-            # Print log
-            processed += batch
-            if i % log_interval == 0:
-                printer.print(f'Training: {processed / total:.1%} [{processed:,}/{total:,}]')
-
-        printer.print(f'Training: completed')
+            printer.print(f'Train epoch {epoch}: completed')
     # endregion
 
     torch.save(
