@@ -2,7 +2,7 @@ dataset_slice = slice(10_000)  # in sentences
 ru_word_count_minimum = 2
 en_word_count_minimum = 2
 infrequent_words_percent = 0.01
-batch_size = 30
+batch_size = 60
 
 encoder_bi = True
 encoder_hidden_dim = 256
