@@ -92,7 +92,7 @@ class Encoder(RNN):
     def __getnewargs__(self, /):
         return self.words_n, self.embedding.embedding_dim, self.hidden_dim, self.bi, self.decoder_hd,
 
-    def __call__(self, data: Tensor, lengths: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, data: Tensor, lengths: Tensor, /) -> tuple[Tensor, Tensor]:
         l, b = data.size()
 
         # data (words, batch)
@@ -185,7 +185,7 @@ class Decoder(RNN):
     def __getnewargs__(self, /):
         return self.words_n, self.embedding.embedding_dim, self.hidden_dim, self.encoder_hd,
 
-    def __call__(self, data: Tensor, weighted: Tensor, h: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, data: Tensor, weighted: Tensor, h: Tensor, /) -> tuple[Tensor, Tensor]:
         # weighted (1, batch, encoder_hd)
         # data (batch)
         data = data.unsqueeze(0)
@@ -236,7 +236,7 @@ class Seq2Seq(Model):
                 (teaching_percent > 0 and random.rand() < teaching_percent)
         )
 
-    def _eval_weighted(self, encoder_out: Tensor, mask: Tensor, v: Tensor) -> Tensor:
+    def _eval_weighted(self, encoder_out: Tensor, mask: Tensor, v: Tensor, /) -> Tensor:
         a = self.attention(encoder_out, mask, v)
         # a (batch, words)
         a = a.unsqueeze(1)
