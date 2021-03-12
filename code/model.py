@@ -138,7 +138,7 @@ class Attention(Model):
     def __getnewargs__(self, /):
         return self.encoder_hd, self.decoder_hd,
 
-    def __call__(self, encoder_out: Tensor, mask: Tensor, v: Tensor, /):
+    def __call__(self, encoder_out: Tensor, mask: Tensor, v: Tensor, /) -> Tensor:
         # v (1, batch, decoder_hd)
         # encoder_out (batch, words, encoder_hd)
 
@@ -240,7 +240,7 @@ class Seq2Seq(Model):
         a = self.attention(encoder_out, mask, v)
         # a (batch, words)
         a = a.unsqueeze(1)
-        # attention (batch, 1, words)
+        # a (batch, 1, words)
         weighted = torch.bmm(a, encoder_out)
         # weighted (batch, 1, encoder_hd)
         weighted = weighted.transpose(0, 1)
