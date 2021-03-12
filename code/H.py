@@ -1,6 +1,6 @@
 dataset_slice = slice(10_000)  # in sentences
-ru_word_count_minimum = 1
-en_word_count_minimum = 1
+ru_word_count_minimum = 2
+en_word_count_minimum = 2
 infrequent_words_percent = 0.01
 batch_size = 30
 
@@ -16,6 +16,6 @@ decoder_embed_dim = 256
 learning_rate = 0.001
 gradient_norm_clip = 1.
 
-epochs = 10
+epochs = 20
 
 teaching_percent = 0.5
