@@ -12,3 +12,9 @@
     - Read [docs](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html)
       to find out which drivers you need to support necessary CUDA version.
 1. Install [PyTorch 1.8.x](https://pytorch.org/) with CUDA supported by your graphic card and drivers.
+
+# Train data
+
+[comment]: <> (1. [EN-RU plain-text bitexts of UN Parallel Corpus]&#40;https://conferences.unite.un.org/UNCORPUS/en/DownloadOverview&#41;)
+
+1. [ParaCrawl Russian Corpus](https://www.paracrawl.eu/)
