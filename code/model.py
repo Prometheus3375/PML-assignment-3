@@ -129,8 +129,8 @@ class Decoder(RNN):
         out, lengths = pad_packed_sequence(out, True, Token_PAD, l)
 
         out = self.linear(out)
-        b, seq, cls = out.size()
-        out = out.view(b, cls, seq)
+        # out.size() = batch, seq, classes
+        out = out.transpose(1, 2)
         return out, hc
 
 
