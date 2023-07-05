@@ -1,6 +1,7 @@
 import re
 from collections import Counter
-from typing import final
+from math import inf
+from typing import TextIO, final
 
 from torch import Tensor, int64, tensor, zeros
 from torch.utils.data import Dataset
@@ -202,16 +203,38 @@ class RUENDataset(Dataset):
         return self.ru.get(index), self.en.get(index)
 
 
+def readlines(f: TextIO, /, data_slice: slice):
+    start = data_slice.start
+    stop = data_slice.stop
+    step = data_slice.step
+    if step is None:
+        step = 1
+
+    if step < 0:
+        stop = inf if start is None else start + 1  # + 1 since start element must be included
+    elif stop is None:
+        stop = inf
+
+    lines = []
+    for line in f:
+        if len(lines) >= stop:
+            break
+
+        lines.append(line)
+
+    return lines[data_slice]
+
+
 @final
 class ParaCrawl(RUENDataset):
     def __init__(self, en_ru_file: str, ru_lang: Language, en_lang: Language, /,
                  data_slice: slice = slice(None)):
         with open(en_ru_file, 'r') as f:
-            lines = f.readlines()
+            lines = readlines(f, data_slice)
 
         en_list = []
         ru_list = []
-        for line in lines[data_slice]:
+        for line in lines:
             en, ru = line.split('\t')
             en_list.append(en)
             ru_list.append(ru)
@@ -224,10 +247,10 @@ class Yandex(RUENDataset):
     def __init__(self, ru_file: str, en_file: str, ru_lang: Language, en_lang: Language, /,
                  data_slice: slice = slice(None)):
         with open(ru_file) as f:
-            ru_list = f.readlines()[data_slice]
+            ru_list = readlines(f, data_slice)
 
         with open(en_file) as f:
-            en_list = f.readlines()[data_slice]
+            en_list = readlines(f, data_slice)
 
         super().__init__(ru_list, en_list, ru_lang, en_lang)
 
@@ -236,7 +259,7 @@ class Yandex(RUENDataset):
 class TestDataset(Dataset):
     def __init__(self, file: str, lang: Language, /, data_slice: slice = slice(None)):
         with open(file) as f:
-            lines = f.readlines()[data_slice]
+            lines = readlines(f, data_slice)
 
         self.sentences = [preprocess_ru(s) for s in lines]
         self.lang = lang
