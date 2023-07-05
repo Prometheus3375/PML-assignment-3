@@ -19,3 +19,11 @@
 
 1. [Yandex English-Russian corpus](https://translate.yandex.ru/corpus?lang=en)
 1. [ParaCrawl Russian Corpus](https://www.paracrawl.eu/)
+
+# Models
+
+1. We followed the [tutorial](https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html), but made
+   significant changes:
+   - Our own preprocessing.
+   - Added batching.
+    
