@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import Tensor, nn
 
 from device import Device
 
@@ -13,7 +13,7 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(input_size, hidden_size)
         self.gru = nn.GRU(hidden_size, hidden_size)
 
-    def forward(self, input, hidden, /):
+    def __call__(self, input: Tensor, hidden: Tensor, /) -> tuple[Tensor, Tensor]:
         embedded = self.embedding(input).view(1, 1, -1)
         output = embedded
         output, hidden = self.gru(output, hidden)
@@ -33,7 +33,7 @@ class DecoderRNN(nn.Module):
         self.out = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, input, hidden, /):
+    def __call__(self, input: Tensor, hidden: Tensor, /) -> tuple[Tensor, Tensor]:
         output = self.embedding(input).view(1, 1, -1)
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
@@ -59,7 +59,7 @@ class AttnDecoderRNN(nn.Module):
         self.gru = nn.GRU(self.hidden_size, self.hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
-    def forward(self, input, hidden, encoder_outputs, /):
+    def __call__(self, input: Tensor, hidden: Tensor, encoder_outputs: Tensor, /) -> tuple[Tensor, Tensor, Tensor]:
         embedded = self.embedding(input).view(1, 1, -1)
         embedded = self.dropout(embedded)
 
