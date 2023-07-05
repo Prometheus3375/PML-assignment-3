@@ -2,7 +2,7 @@ import re
 from collections import Counter
 from typing import final
 
-from torch import Tensor, tensor
+from torch import Tensor, int64, tensor, zeros
 from torch.utils.data import Dataset
 
 from utils import Device
@@ -71,8 +71,8 @@ Token_EOS = Special.index(EOS)
 Token_NIL = Special.index(NIL)
 
 
-def token2tensor(token: int, batch: int, /):
-    return tensor([[token] for _ in range(batch)], device=Device)
+def token2tensor(token: int, /, *size: int) -> Tensor:
+    return zeros(*size, dtype=int64, device=Device) + token
 
 
 @final
@@ -111,6 +111,9 @@ class Language:
 
         self._reindex()
 
+    def lower_than(self, count: int, /):
+        return frozenset(word for word, c in self.word_counter.items() if c < count)
+
     def topk(self, k: int, /):
         return frozenset(sorted(
             self.word_counter,
@@ -130,7 +133,8 @@ class Language:
 
         self._reindex()
 
-    def sentence2tensor(self, sentence: Sentence, /, with_sos: bool = False, with_eos: bool = False):
+    def sentence2tensor(self, sentence: Sentence, /,
+                        with_sos: bool = False, with_eos: bool = False):
         indexes = [Token_SOS] if with_sos else []
         indexes += [self.word2index.get(w, Token_NIL) for w in sentence.split()]
         if with_eos:
@@ -156,6 +160,9 @@ class LanguageData:
 
     def __iter__(self, /):
         return iter(self.data)
+
+    def get_both(self, index: int, /):
+        return self.lang.sentence2tensor(self.data[index], with_sos=True, with_eos=True)
 
     def get_sos(self, index: int, /):
         return self.lang.sentence2tensor(self.data[index], with_sos=True)
@@ -184,10 +191,10 @@ class RUENDataset(Dataset):
     def __iter__(self, /):
         return zip(self.ru, self.en)
 
-    def __getitem__(self, index: int, /) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor], Tensor]:
+    def __getitem__(self, index: int, /) -> tuple[tuple[Tensor, Tensor], Tensor, Tensor]:
         return (
-            self.ru.get_eos(index),
-            self.en.get_sos(index),
+            self.ru.get_both(index),
+            self.en.get_sos(index)[0],
             self.en.get_eos(index)[0],
         )
 
@@ -227,9 +234,9 @@ class Yandex(RUENDataset):
 
 @final
 class TestDataset(Dataset):
-    def __init__(self, file: str, lang: Language):
+    def __init__(self, file: str, lang: Language, /, data_slice: slice = slice(None)):
         with open(file) as f:
-            lines = f.readlines()
+            lines = f.readlines()[data_slice]
 
         self.sentences = [preprocess_ru(s) for s in lines]
         self.lang = lang

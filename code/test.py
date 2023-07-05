@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 
 from data import Language, TestDataset, Token_EOS, Token_SOS, token2tensor
 from misc import Printer, time
-from model import Decoder, Encoder
+from model import Seq2Seq
 from utils import Device, make_determenistic
 
 
@@ -13,42 +13,39 @@ from utils import Device, make_determenistic
 def main(text_path: str, data_path: str):
     make_determenistic()
 
-    ru_args, en_args, encoder_data, decoder_data = torch.load(data_path)
+    ru_args, en_args, model_data = torch.load(data_path)
 
     ru_lang = Language(*ru_args)
     en_lang = Language(*en_args)
 
-    dataset = TestDataset(text_path, ru_lang)
+    dataset = TestDataset(
+        text_path,
+        ru_lang,
+        # data_slice=slice(hyper.dataset_slice.stop + 1, hyper.dataset_slice.stop + 1 + 100),
+        # data_slice=slice(100),
+    )
     batch = 1
     loader = DataLoader(dataset, batch)
-    lengths = torch.tensor([1])
 
-    encoder = Encoder.from_data(encoder_data).to(Device).eval()
-    decoder = Decoder.from_data(decoder_data).to(Device).eval()
+    model = Seq2Seq.from_data(model_data).to(Device).eval()
 
     total = len(dataset)
     with torch.no_grad(), Printer() as printer, open('answer.txt', 'w') as out:
         printer.print(f'Testing: starting...')
-        for i, sentence in enumerate(loader, 1):
-            # print_tensor(sentence, 'encoder_inp')
-
-            encoded, hc = encoder(sentence)
-
-            decoder_inp = token2tensor(Token_SOS, batch), lengths
-            # print_tensor(decoder_inp, 'decoder_inp')
+        for i, (ru, ru_l) in enumerate(loader, 1):
+            en = token2tensor(Token_SOS, batch, en_lang.sentence_length + 1)
+            # en (batch, words)
+            prediction = model(ru, ru_l, en, 0.)  # teaching must be off
+            # predictions (batch, words_n, words)
+            prediction = prediction.transpose(0, 2).squeeze(2)
+            # predictions (words, words_n)
 
             answer = []
-            for _ in range(en_lang.sentence_length):
-                decoded, hc = decoder(decoder_inp, hc)
-
-                topv, topi = decoded.topk(1, dim=1)
-                token = topi.item()
-                if token == Token_EOS:
+            for p in prediction:
+                top = p.argmax(0).item()
+                if top == Token_EOS:
                     break
-
-                answer.append(token)
-                decoder_inp = token2tensor(token, batch), lengths
-                # print_tensor(decoder_inp, 'decoder_inp')
+                answer.append(top)
 
             out.write(' '.join(en_lang.index2word[i] for i in answer) + '\n')
 
@@ -60,6 +57,7 @@ def main(text_path: str, data_path: str):
 
 if __name__ == '__main__':
     default_text = 'tests/test-100-lines.txt'
+    # default_text = 'datasets/yandex/corpus.en_ru.1m.ru'
     default_data = 'data/data.pth'
 
     from argparse import ArgumentParser
