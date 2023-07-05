@@ -8,7 +8,7 @@ from torch.optim import Adam, Optimizer
 from torch.utils.data import ConcatDataset, DataLoader
 
 import hyper
-from data import Language, ParaCrawl, Token_EOS, Token_SOS, Yandex, token2tensor
+from data import Language, ParaCrawl, Token_EOS, Token_PAD, Token_SOS, Yandex
 from device import Device
 from misc import Printer, Timer, time
 from model import AttnDecoderRNN, Decoder, Encoder, EncoderRNN
@@ -70,7 +70,7 @@ def train(
     return loss.item() / target_length
 
 
-def print_tensor(name: str, t: Tensor):
+def print_tensor(t: Tensor, name: str = 'tensor'):
     print(f'\n{name} of size {tuple(t.size())}\n{t}')
 
 
@@ -119,12 +119,10 @@ def main():
 
     encoder_optimizer = Adam(encoder.parameters(), lr=hyper.learning_rate)
     decoder_optimizer = Adam(decoder.parameters(), lr=hyper.learning_rate)
-    criterion = CrossEntropyLoss()
+    criterion = CrossEntropyLoss(ignore_index=Token_PAD)
     # endregion
 
     # region Training
-    sos = token2tensor(Token_SOS, batch)
-    eos = token2tensor(Token_EOS, batch)
 
     processed = 0
     total = len(dataset)
@@ -132,27 +130,21 @@ def main():
 
     with Printer() as printer:
         printer.print(f'Training: starting...')
-        for i, (ru, en) in enumerate(loader, 1):
-            # print_tensor('ru', ru)
-            # print_tensor('en', en)
+        for i, (ru_eos, en_sos, en_eos) in enumerate(loader, 1):
+            # print_tensor(ru_eos, 'ru_eos')
+            # print_tensor(en_sos, 'en_sos')
+            # print_tensor(en_eos, 'en_eos')
 
             # Zero the parameter gradients
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
 
             # Run data through coders
-            encoder_inp = torch.cat((ru, eos), dim=1)
-            # print_tensor('encoder_inp', encoder_inp)
-            encoded, hc = encoder(encoder_inp)
+            encoded, hc = encoder(ru_eos)
+            decoded, hc = decoder(en_sos, hc)
+            # print_tensor(decoded, 'decoded')
 
-            decoder_inp = torch.cat((sos, en), dim=1)
-            decoder_out = torch.cat((en, eos), dim=1)
-            # print_tensor('decoder_inp', decoder_inp)
-            # print_tensor('decoder_out', decoder_out)
-            decoded, hc = decoder(decoder_inp, hc)
-            # print_tensor('decoded', decoded)
-
-            loss = criterion(decoded, decoder_out)
+            loss = criterion(decoded, en_eos)
 
             # Back propagate and perform optimization
             loss.backward()
