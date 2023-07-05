@@ -10,9 +10,9 @@ from device import Device
 Sentence = str
 
 Pattern_number = re.compile(r'-?[\d.,:/]+[$%]?')
-Pattern_en_postfixes = re.compile(r"(\w+)'(m|re|s|ve|d)")
+Pattern_en_postfixes = re.compile(r"(\w+)['’](m|re|s|ve|d)")
 
-Pattern_ignored = re.compile(r"[^\w.,:/$%' -]+")
+Pattern_ignored = re.compile(r"[^\w\s.,:/$%'’-]+")
 Pattern_not_alpha = re.compile(r'\W+')
 Pattern_spaces = re.compile(r'\s+')
 
@@ -22,7 +22,7 @@ def preprocess_en(s: str, /) -> Sentence:
     s = Pattern_ignored.sub('', s)
     words = s.split()
     for i, w in enumerate(words):
-        w = w.rstrip(",.:'")
+        w = w.rstrip(",.:'’")
 
         if Pattern_number.fullmatch(w):
             pass
@@ -49,7 +49,7 @@ def preprocess_ru(s: str, /) -> Sentence:
     s = Pattern_ignored.sub('', s)
     words = s.split()
     for i, w in enumerate(words):
-        w = w.rstrip(",.:")
+        w = w.rstrip(",.:’")
 
         if not Pattern_number.fullmatch(w):
             w = Pattern_not_alpha.sub(' ', w).strip()
