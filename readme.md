@@ -23,7 +23,7 @@ Unzip downloaded archives and place text files in the following directories:
 - Yandex: `datasets/yandex`
 - ParaCrawl: `datasets/paracrawl`
 
-# Models
+# Model
 
 We used basic sequence-to-sequence RNN-based model with an attention layer. Our model is based on several tutorials
 ([1](https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html),
@@ -42,7 +42,82 @@ Some notable changes:
   Encoder, Attention and Decoder - are independent of each other. Seq2Seq connects them inside resulting in a very
   simple interface. This simplifies training and testing scripts, making them shorter and cleaner.
 
-## Model structure
+## Structure
+
+### Encoder
+
+#### Layers
+
+- Embedding
+- Dropout (50%)
+- GRU
+- Linear (`encoder hidden state -> decoder hidden state`)
+
+#### Input
+
+- Encoded Russian sentences
+- Lengths of each Russian sentence without padding
+
+#### Output
+
+- GRU output
+- Hidden state of shape appropriate for the decoder
+
+### Attention
+
+#### Layers
+
+- Linear (`encoder output + decoder hidden state -> decoder hidden state`)
+- Linear (`decoder hidden state -> 1`)
+- Softmax
+
+#### Input
+
+- Encoder's GRU output
+- Padding mask
+- Hidden state
+
+#### Output
+
+- Attention tensor
+
+### Decoder
+
+#### Layers
+
+- Embedding
+- Dropout (50%)
+- GRU
+- Linear (`decoder hidden state + encoder hidden state + decoder embed size -> vocabulary`)
+
+#### Input
+
+- Encoded tokens
+- Encoder's GRU output weighted with attention
+
+#### Output
+
+- Predicted tokens
+- Hidden state
+
+### Seq2Seq
+
+#### Layers
+
+- Encoder
+- Attention
+- Decoder
+
+#### Input
+
+- Encoded Russian sentences
+- Lengths of each Russian sentence without padding
+- Encoded English sentences
+- Teaching threshold (number)
+
+#### Output
+
+- Predicted sentences
 
 # Training and results
 
