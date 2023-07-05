@@ -41,7 +41,8 @@ def evaluate(model: Seq2Seq, ru_lang: Language, en_lang: Language, text_path: st
 
             out.write(' '.join(en_lang.index2word[i] for i in answer) + '\n')
 
-            printer.print(f'Testing: {i / total:.0%} [{i:,}/{total:,}]')
+            if i % 5 == 0:
+                printer.print(f'Testing: {i / total:.0%} [{i:,}/{total:,}]')
 
     with ZipFile('answer.zip', 'w') as z:
         z.write('answer.txt')
