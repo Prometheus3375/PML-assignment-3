@@ -5,7 +5,7 @@ from typing import final
 from torch import tensor
 from torch.utils.data import Dataset
 
-from device import Device
+from utils import Device
 
 Sentence = str
 

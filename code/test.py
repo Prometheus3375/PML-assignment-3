@@ -4,13 +4,15 @@ import torch
 from torch.utils.data import DataLoader
 
 from data import Language, TestDataset, Token_EOS, Token_SOS, token2tensor
-from device import Device
 from misc import Printer, time
 from model import Decoder, Encoder
+from utils import Device, fix_random
 
 
 @time
 def main(text_path: str, data_path: str):
+    fix_random()
+
     ru_args, en_args, encoder_data, decoder_data = torch.load(data_path)
 
     ru_lang = Language(*ru_args)

@@ -6,7 +6,7 @@ from torch import Tensor, nn
 from torch.nn import functional
 
 from data import Token_PAD
-from device import Device
+from utils import Device
 
 _hc = tuple[Tensor, Tensor]
 

@@ -9,9 +9,9 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 import hyper
 from data import Language, ParaCrawl, Token_EOS, Token_PAD, Token_SOS, Yandex
-from device import Device
 from misc import Printer, Timer, time
 from model import AttnDecoderRNN, Decoder, Encoder, EncoderRNN
+from utils import Device, fix_random
 
 
 def train(
@@ -76,10 +76,7 @@ def print_tensor(t: Tensor, name: str = 'tensor'):
 
 @time
 def main():
-    # region Fix random
-    torch.manual_seed(0)
-    random.seed(0)
-    # endregion
+    fix_random()
 
     # region Prepare data
     with Timer('\nData preparation time: %s\n'):
