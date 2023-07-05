@@ -1,7 +1,5 @@
 import re
 from collections import Counter
-from collections.abc import Collection
-from math import ceil
 from typing import final
 
 from torch import tensor
@@ -62,13 +60,19 @@ def preprocess_ru(s: str, /) -> Sentence:
     return ' '.join(words)
 
 
+PAD = '~'
 SOS = '^'
 EOS = '@'
 NIL = '*'
-Special = [SOS, EOS, NIL]
+Special = [PAD, SOS, EOS, NIL]
+Token_PAD = Special.index(PAD)
 Token_SOS = Special.index(SOS)
 Token_EOS = Special.index(EOS)
 Token_NIL = Special.index(NIL)
+
+
+def token2tensor(token: int, batch: int, /):
+    return tensor([[token] for _ in range(batch)], device=Device)
 
 
 @final
@@ -97,42 +101,63 @@ class Language:
 
         self._reindex()
 
-    def drop_words(self, percentage: float, /) -> frozenset[str]:
-        if percentage >= 1:
-            raise ValueError(f'cannot drop all words')
+    def topk(self, k: int, /):
+        return frozenset(sorted(
+            self.word_counter,
+            key=lambda w: self.word_counter[w],
+            reverse=True,
+        )[:k])
 
-        if percentage > 0:
-            infrequent_words_n = ceil(self.words_n * percentage)
-            infrequent_words = frozenset(
-                sorted(self.word_counter, key=lambda w: self.word_counter[w])[:infrequent_words_n]
-            )
+    def lowk(self, k: int, /):
+        return frozenset(sorted(
+            self.word_counter,
+            key=lambda w: self.word_counter[w],
+        )[:k])
 
-            for word in infrequent_words:
-                del self.word_counter[word]
+    def drop_words(self, /, *words: str):
+        for word in words:
+            del self.word_counter[word]
 
-            self._reindex()
+        self._reindex()
 
-            return infrequent_words
+    def sentence2tokens(self, sentence: Sentence):
+        return [self.word2index.get(w, Token_NIL) for w in sentence.split()]
 
-        return frozenset()
 
-    def sentence2tensor(self, sentence: Sentence):
-        return tensor([self.word2index.get(w, Token_NIL) for w in sentence.split()], device=Device)
+class LanguageData:
+    __slots__ = 'data', 'lang', 'max_length',
+
+    def __init__(self, data: list[Sentence], lang: Language, /):
+        self.data = data
+        self.lang = lang
+        self.max_length = max(s.count(' ') for s in data) + 1
+
+        lang.add_sentences(data)
+
+    def __len__(self, /):
+        return len(self.data)
+
+    def __iter__(self, /):
+        return iter(self.data)
+
+    def __getitem__(self, index: int, /):
+        tokens = self.lang.sentence2tokens(self.data[index])
+        return tensor(tokens + [PAD] * self.max_length, device=Device)
+
+    def get(self, index: int, /):
+        return self.data[index]
 
 
 class RUENDataset(Dataset):
-    def __init__(self, ru: Collection[str], en: Collection[str], ru_lang: Language, en_lang: Language, /):
+    def __init__(self, ru: list[str], en: list[str], ru_lang: Language, en_lang: Language, /):
         if len(ru) != len(en):
             raise ValueError(f'different number of sentences: ru ({len(ru):,}) and en ({len(en):,})')
 
         if ru_lang is en_lang:
             raise ValueError(f'same language object is used for RU and EN')
 
-        self.ru_lang = ru_lang
-        self.ru = [preprocess_ru(s) for s in ru]
-
-        self.en_lang = en_lang
-        self.en = [preprocess_en(s) for s in en]
+        self.ru = LanguageData([preprocess_ru(s) for s in ru], ru_lang)
+        self.en = LanguageData([preprocess_en(s) for s in en], en_lang)
 
     def __len__(self, /):
         return len(self.ru)
@@ -141,13 +166,10 @@ class RUENDataset(Dataset):
         return zip(self.ru, self.en)
 
     def __getitem__(self, index: int, /):
-        return (
-            self.ru_lang.sentence2tensor(self.ru[index]),
-            self.en_lang.sentence2tensor(self.en[index]),
-        )
+        return self.ru[index], self.en[index]
 
     def get(self, index: int, /):
-        return self.ru[index], self.en[index]
+        return self.ru.get(index), self.en.get(index)
 
 
 @final
