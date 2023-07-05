@@ -144,7 +144,7 @@ class Attention(Model):
         self.softmax = nn.Softmax(1)
 
     def __getnewargs__(self, /):
-        return self.hidden_dim
+        return self.hidden_dim,
 
     def __call__(self, encoder_out: Tensor, mask: Tensor, v: Tensor, /):
         # v (1, batch, hidden_dim)
@@ -190,7 +190,7 @@ class Decoder(RNN):
         self.linear = nn.Linear(hidden_dim * 2 + hidden_dim * (self.bi + 1) + embed_dim, words_n)
 
     def __getnewargs__(self, /):
-        return self.words_n, self.input_dim, self.hidden_dim
+        return self.words_n, self.input_dim - self.hidden_dim * 2, self.hidden_dim
 
     def __call__(self, data: Tensor, weighted: Tensor, hc: _tt) -> tuple[Tensor, _tt]:
         # weighted (1, batch, hidden_dim * 2)
