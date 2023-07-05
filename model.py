@@ -5,6 +5,11 @@ from torch import Tensor, nn
 from device import Device
 
 
+class Encoder(nn.Module):
+    def __init__(self, language_: int):
+        pass
+
+
 class EncoderRNN(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, /):
         super().__init__()
