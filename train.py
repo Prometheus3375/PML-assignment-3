@@ -61,7 +61,7 @@ def train(
 @time
 def main():
     # region Prepare data
-    with Timer('Data preparation time: %dm %ds'):
+    with Timer('Data preparation time: %s'):
         ru_lang = Language()
         en_lang = Language()
 
