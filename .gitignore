@@ -2,7 +2,7 @@
 datasets/
 answer.zip
 answer.txt
-data*.pth
+data/
 
 # PyCharm
 .idea/
