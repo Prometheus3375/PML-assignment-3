@@ -73,7 +73,9 @@ def main():
             ru_lang.add_sentences(data.ru)
             en_lang.add_sentences(data.en)
 
-        ru_lang.drop_words(hyper.infrequent_words_percentage)
+        dropped = ru_lang.drop_words(hyper.infrequent_words_percentage)
+
+        print(f'{len(dropped)} infrequent words are dropped')
 
         max_output_length = -inf
         for data in all_data:
