@@ -8,6 +8,8 @@ from torch.nn import functional
 from data import Token_PAD
 from device import Device
 
+_hc = tuple[Tensor, Tensor]
+
 
 class Model(nn.Module):
     @property
@@ -53,15 +55,20 @@ class RNN(Model):
         return self.lstm.bidirectional
 
     def initial_h(self, batch_size: int, /):
-        return torch.zeros(batch_size, self.layers_count * self.bi, self.hidden_dim, device=Device)
+        return torch.zeros(self.layers_count * (self.bi + 1), batch_size, self.hidden_dim, device=Device)
 
     def initial_c(self, batch_size: int, /):
-        return torch.zeros(batch_size, self.layers_count * self.bi, self.hidden_dim, device=Device)
+        return torch.zeros(self.layers_count * (self.bi + 1), batch_size, self.hidden_dim, device=Device)
+
+    def initial_hc(self, batch_size: int, /):
+        return self.initial_h(batch_size), self.initial_c(batch_size)
 
 
 @final
 class Encoder(RNN):
     def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
+        super().__init__(embed_dim, hidden_dim, 1, False)
+
         self.words_n = words_n
 
         self.embedding = nn.Embedding(
@@ -70,26 +77,23 @@ class Encoder(RNN):
             padding_idx=Token_PAD,
         )
 
-        super().__init__(embed_dim, hidden_dim, 1, False)
-
     def __getnewargs__(self, /):
         return self.words_n, self.embed_dims, self.hidden_dim
 
-    def __call__(self, inp: Tensor, h: Tensor = None, c: Tensor = None) -> tuple[Tensor, Tensor, Tensor]:
-        batch = inp.size()[0]
-        if h is None:
-            h = self.initial_h(batch)
-        if c is None:
-            c = self.initial_c(batch)
+    def __call__(self, inp: Tensor, hc: _hc = None) -> tuple[Tensor, _hc]:
+        if hc is None:
+            hc = self.initial_hc(inp.size()[0])
 
         embed = self.embedding(inp)
-        out, (h, c) = self.lstm(embed, h, c)
-        return out, h, c
+        out, hc = self.lstm(embed, hc)
+        return out, hc
 
 
 @final
 class Decoder(RNN):
     def __init__(self, words_n: int, embed_dim: int, hidden_dim: int, /):
+        super().__init__(embed_dim, hidden_dim, 1, False)
+
         self.words_n = words_n
 
         self.embedding = nn.Embedding(
@@ -97,19 +101,19 @@ class Decoder(RNN):
             embedding_dim=embed_dim,
             padding_idx=Token_PAD,
         )
-
-        super().__init__(embed_dim, hidden_dim, 1, False)
 
         self.linear = nn.Linear(hidden_dim * (self.bi + 1), words_n)
 
     def __getnewargs__(self, /):
         return self.words_n, self.embed_dims, self.hidden_dim
 
-    def __call__(self, inp: Tensor, h: Tensor, c: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    def __call__(self, inp: Tensor, hc: _hc) -> tuple[Tensor, _hc]:
         embed = self.embedding(inp)
-        out, (h, c) = self.lstm(embed, h, c)
+        out, hc = self.lstm(embed, hc)
         out = self.linear(out)
-        return out, h, c
+        b, seq, cls = out.size()
+        out = out.view(b, cls, seq)
+        return out, hc
 
 
 class EncoderRNN(nn.Module):
