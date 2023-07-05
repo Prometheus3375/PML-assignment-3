@@ -2,7 +2,7 @@ import re
 from collections import Counter
 from typing import final
 
-from torch import tensor
+from torch import Tensor, tensor
 from torch.utils.data import Dataset
 
 from utils import Device
@@ -136,8 +136,9 @@ class Language:
         if with_eos:
             indexes.append(Token_EOS)
 
-        indexes += [Token_PAD] * (self._sentence_length - len(indexes) + with_sos + with_eos)
-        return tensor(indexes, device=Device)
+        l = len(indexes)
+        indexes += [Token_PAD] * (self._sentence_length - l + with_sos + with_eos)
+        return tensor(indexes, device=Device), tensor(l)
 
 
 @final
@@ -183,11 +184,11 @@ class RUENDataset(Dataset):
     def __iter__(self, /):
         return zip(self.ru, self.en)
 
-    def __getitem__(self, index: int, /):
+    def __getitem__(self, index: int, /) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor], Tensor]:
         return (
             self.ru.get_eos(index),
             self.en.get_sos(index),
-            self.en.get_eos(index),
+            self.en.get_eos(index)[0],
         )
 
     def get(self, index: int, /):

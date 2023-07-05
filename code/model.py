@@ -4,11 +4,12 @@ from typing import final
 import torch
 from torch import Tensor, nn
 from torch.nn import functional
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from data import Token_PAD
 from utils import Device
 
-_hc = tuple[Tensor, Tensor]
+_tt = tuple[Tensor, Tensor]
 
 
 class Model(nn.Module):
@@ -87,12 +88,17 @@ class Encoder(RNN):
     def __getnewargs__(self, /):
         return self.words_n, self.input_dim, self.hidden_dim
 
-    def __call__(self, inp: Tensor, hc: _hc = None) -> tuple[Tensor, _hc]:
-        if hc is None:
-            hc = self.initial_hc(inp.size()[0])
+    def __call__(self, inp: _tt, hc: _tt = None) -> tuple[_tt, _tt]:
+        data, lengths = inp
+        b, l = data.size()
 
-        embed = self.embedding(inp)
-        out, hc = self.lstm(embed, hc)
+        if hc is None:
+            hc = self.initial_hc(b)
+
+        embed = self.embedding(data)
+        seqs = pack_padded_sequence(embed, lengths, True, False)
+        out, hc = self.lstm(seqs, hc)
+        out = pad_packed_sequence(out, True, Token_PAD, l)
         return out, hc
 
 
@@ -114,9 +120,14 @@ class Decoder(RNN):
     def __getnewargs__(self, /):
         return self.words_n, self.input_dim, self.hidden_dim
 
-    def __call__(self, inp: Tensor, hc: _hc) -> tuple[Tensor, _hc]:
-        embed = self.embedding(inp)
-        out, hc = self.lstm(embed, hc)
+    def __call__(self, inp: _tt, hc: _tt) -> tuple[_tt, _tt]:
+        data, lengths = inp
+        l = data.size()[1]
+        embed = self.embedding(data)
+        seqs = pack_padded_sequence(embed, lengths, True, False)
+        out, hc = self.lstm(seqs, hc)
+        out, lengths = pad_packed_sequence(out, True, Token_PAD, l)
+
         out = self.linear(out)
         b, seq, cls = out.size()
         out = out.view(b, cls, seq)

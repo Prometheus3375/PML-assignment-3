@@ -21,6 +21,7 @@ def main(text_path: str, data_path: str):
     dataset = TestDataset(text_path, ru_lang)
     batch = 1
     loader = DataLoader(dataset, batch)
+    lengths = torch.tensor([1])
 
     encoder = Encoder.from_data(encoder_data).to(Device).eval()
     decoder = Decoder.from_data(decoder_data).to(Device).eval()
@@ -33,7 +34,7 @@ def main(text_path: str, data_path: str):
 
             encoded, hc = encoder(sentence)
 
-            decoder_inp = token2tensor(Token_SOS, batch)
+            decoder_inp = token2tensor(Token_SOS, batch), lengths
             # print_tensor(decoder_inp, 'decoder_inp')
 
             answer = []
@@ -46,7 +47,7 @@ def main(text_path: str, data_path: str):
                     break
 
                 answer.append(token)
-                decoder_inp = token2tensor(token, batch)
+                decoder_inp = token2tensor(token, batch), lengths
                 # print_tensor(decoder_inp, 'decoder_inp')
 
             out.write(' '.join(en_lang.index2word[i] for i in answer) + '\n')
