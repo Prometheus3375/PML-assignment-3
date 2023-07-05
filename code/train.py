@@ -111,7 +111,7 @@ def main():
         'data/data.pt',
     )
 
-    evaluate(model.to(Device), ru_lang, en_lang, 'tests/test-100-lines.txt',
+    evaluate(model.to(Device), ru_lang, en_lang, 'datasets/yandex/corpus.en_ru.1m.ru',
              slice(hyper.dataset_slice.stop + 1, hyper.dataset_slice.stop + 1 + 100))
 
 
