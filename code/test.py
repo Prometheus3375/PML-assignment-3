@@ -56,7 +56,7 @@ def main(data_path: str, text_path: str, /):
     ru_lang = Language(*ru_args)
     en_lang = Language(*en_args)
 
-    model = Seq2Seq.from_data(model_data).to(Device).eval()
+    model = Seq2Seq.from_data(model_data).to(Device)
 
     evaluate(model, ru_lang, en_lang, text_path)
 
