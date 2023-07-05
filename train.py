@@ -1,3 +1,4 @@
+from itertools import chain
 from math import inf
 
 import torch
@@ -7,7 +8,7 @@ from torch.nn import Module, NLLLoss
 from torch.optim import Adam, Optimizer
 
 import hyper
-from data import EOS, Language, ParaCrawl, Token_EOS, Token_SOS
+from data import EOS, Language, ParaCrawl, Token_EOS, Token_SOS, Yandex
 from device import Device
 from misc import Printer, Timer, time
 from model import AttnDecoderRNN, EncoderRNN
@@ -55,8 +56,9 @@ def train(
             decoder_input = target_tensor[di]
         else:
             topi: Tensor
-            topv, topi = decoder_output.max()
-            decoder_input = topi.detach()  # detach from history as input
+            topv, topi = decoder_output.topk(1)
+            decoder_input = topi.squeeze().detach()  # detach from history as input
+
             if decoder_input.item() == Token_EOS:
                 break
 
@@ -70,18 +72,32 @@ def train(
 
 @time
 def main():
-    # Fix seeds
+    # region Fix random
     torch.manual_seed(0)
     random.seed(0)
+    # endregion
 
     # region Prepare data
     with Timer('Data preparation time: %s'):
         ru_lang = Language()
         en_lang = Language()
 
-        paracrawl = ParaCrawl('datasets/paracrawl/en-ru.txt', ru_lang, en_lang, limit=hyper.dataset_limit)
+        yandex = Yandex(
+            'datasets/yandex/corpus.en_ru.1m.ru',
+            'datasets/yandex/corpus.en_ru.1m.en',
+            ru_lang,
+            en_lang,
+            data_slice=hyper.dataset_slice,
+        )
 
-        all_data = paracrawl,
+        paracrawl = ParaCrawl(
+            'datasets/paracrawl/en-ru.txt',
+            ru_lang,
+            en_lang,
+            data_slice=slice(0),
+        )
+
+        all_data = yandex, paracrawl,
 
         for data in all_data:
             ru_lang.add_sentences(data.ru)
@@ -91,29 +107,30 @@ def main():
 
         print(f'{len(dropped)} infrequent words are dropped')
 
-        max_output_length = -inf
+        max_input_length = -inf
         for data in all_data:
-            for sentence in data.en:
+            for sentence in data.ru:
                 c = sentence.count(' ') + 1
-                if c > max_output_length:
-                    max_output_length = c
-
-        # all_data = sum(all_data)
+                if c > max_input_length:
+                    max_input_length = c
     # endregion
 
+    # region Models and optimizers
     encoder = EncoderRNN(ru_lang.words_n, hyper.hidden_state_size).to(Device).train()
-    decoder = AttnDecoderRNN(hyper.hidden_state_size, en_lang.words_n, max_output_length).to(Device).train()
+    decoder = AttnDecoderRNN(hyper.hidden_state_size, en_lang.words_n, max_input_length).to(Device).train()
 
     encoder_optimizer = Adam(encoder.parameters(), lr=hyper.learning_rate)
     decoder_optimizer = Adam(decoder.parameters(), lr=hyper.learning_rate)
     criterion = NLLLoss()
+    # endregion
 
+    # region Training
     processed = 0
-    total = len(paracrawl)
+    total = sum(len(d) for d in all_data)
     log_interval = hyper.log_interval
     with Printer() as printer:
         printer.print(f'Training: starting...')
-        for i, (ru, en) in enumerate(paracrawl, 1):
+        for i, (ru, en) in enumerate(chain(*all_data), 1):
             ru = ru_lang.sentence2tensor(f'{ru} {EOS}').view(-1, 1)
             en = en_lang.sentence2tensor(f'{en} {EOS}').view(-1, 1)
 
@@ -139,17 +156,19 @@ def main():
             #     plot_loss_total = 0
 
         printer.print(f'Training: completed')
+    # endregion
 
     torch.save(
         (
             hyper.hidden_state_size,
-            max_output_length,
+            max_input_length,
             ru_lang.word_counter,
             en_lang.word_counter,
             encoder.cpu().eval().state_dict(),
             decoder.cpu().eval().state_dict(),
         ),
-        'data.pth')
+        'data.pth',
+    )
 
 
 if __name__ == '__main__':
