@@ -5,6 +5,8 @@ Device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'PyTorch is using {Device.type.upper()}\n')
 
 
-def fix_random(seed: int = 0):
-    torch.manual_seed(seed)
+def make_determenistic(seed: int = 0):
     random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
