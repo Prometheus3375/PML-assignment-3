@@ -76,7 +76,7 @@ def main():
     # region Training
     teaching_percent = H.teaching_percent
     total = len(dataset)
-    log_interval = max(5, round(total / batch / 100))
+    log_interval = max(5, round(total / batch / 1000))
 
     for epoch in range(1, H.epochs + 1):
         with Printer() as printer:
