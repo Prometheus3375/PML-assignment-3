@@ -91,6 +91,7 @@ class Encoder(RNN):
             embedding_dim=embed_dim,
             padding_idx=Token_PAD,
         )
+        self.dropout = nn.Dropout()
 
         self.linear_h = nn.Linear(hidden_dim * (self.bi + 1), hidden_dim)
         self.linear_c = nn.Linear(hidden_dim * (self.bi + 1), hidden_dim)
@@ -117,6 +118,7 @@ class Encoder(RNN):
         # data (words, batch)
         embed = self.embedding(data)
         # embed (words, batch, input_dim)
+        embed = self.dropout(embed)
         seqs = pack_padded_sequence(embed, lengths, self.batch_first, False)
         out, hc = self.lstm(seqs)
         out, lengths = pad_packed_sequence(out, self.batch_first, Token_PAD, l)
@@ -183,6 +185,7 @@ class Decoder(RNN):
             embedding_dim=embed_dim,
             padding_idx=Token_PAD,
         )
+        self.dropout = nn.Dropout()
 
         self.linear = nn.Linear(hidden_dim * 2 + hidden_dim * (self.bi + 1) + embed_dim, words_n)
 
@@ -196,6 +199,7 @@ class Decoder(RNN):
         # data (words = 1, batch)
         embed = self.embedding(data)
         # embed (words = 1, batch, input_dim)
+        embed = self.dropout(embed)
 
         inp = torch.cat((embed, weighted), dim=2)
         # embed (words = 1, batch, input_dim + hidden_dim * 2)
