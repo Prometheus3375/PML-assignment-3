@@ -1,7 +1,7 @@
 import re
 from collections import Counter
 from collections.abc import Collection
-from math import ceil
+from math import ceil, inf
 from typing import final
 
 from torch import tensor
@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 
 from device import Device
 
-Sentence = list[str]
+Sentence = str
 
 Pattern_punctuation = re.compile(r'([.!?])')
 Pattern_ignored = re.compile(r'[^\w.!?]+')
@@ -19,14 +19,14 @@ def preprocess_en(s: str, /) -> Sentence:
     s = s.lower()
     s = Pattern_punctuation.sub(r' \1', s)
     s = Pattern_ignored.sub(' ', s)
-    return s.strip().split()
+    return s.strip()
 
 
 def preprocess_ru(s: str, /) -> Sentence:
     s = s.lower()
     s = Pattern_punctuation.sub(r' \1', s)
     s = Pattern_ignored.sub(' ', s)
-    return s.strip().split()
+    return s.strip()
 
 
 SOS = '^'
@@ -59,15 +59,16 @@ class Language:
 
     def add_sentences(self, sentences: list[Sentence], /):
         for sentence in sentences:
-            for word in sentence:
+            for word in sentence.split():
                 self.word_counter[word] += 1
 
         self._reindex()
 
-    def drop_words(self, percentage: float, /) -> set[str]:
+    def drop_words(self, percentage: float, /) -> frozenset[str]:
         if percentage > 0:
             infrequent_words_n = ceil(self.words_n * percentage)
-            infrequent_words = set(sorted(self.word_counter, key=lambda w: self.word_counter[w])[:infrequent_words_n])
+            infrequent_words = frozenset(
+                sorted(self.word_counter, key=lambda w: self.word_counter[w])[:infrequent_words_n])
 
             for word in infrequent_words:
                 del self.word_counter[word]
@@ -79,10 +80,10 @@ class Language:
         if percentage >= 1:
             raise ValueError(f'cannot drop all words')
 
-        return set()
+        return frozenset()
 
     def sentence2tensor(self, sentence: Sentence):
-        return tensor([self.word2index.get(w, Token_NIL) for w in sentence], device=Device)
+        return tensor([self.word2index.get(w, Token_NIL) for w in sentence.split()], device=Device)
 
 
 class RUENDataset(Dataset):
@@ -114,20 +115,19 @@ class RUENDataset(Dataset):
     def get(self, index: int, /):
         return self.ru[index], self.en[index]
 
-    def drop_words_ru(self, dropped: set[str], /):
-        for sentence in self.ru:
-            for i, word in enumerate(sentence):
-                if word in dropped:
-                    sentence[i] = NIL
-
 
 @final
 class ParaCrawl(RUENDataset):
-    def __init__(self, en_ru_file: str, ru_lang: Language, en_lang: Language, /):
+    def __init__(self, en_ru_file: str, ru_lang: Language, en_lang: Language, /, limit: int = inf):
+        en_list = []
+        ru_list = []
         with open(en_ru_file, 'r') as f:
-            data = (line.strip().split('\t') for line in f)
-            data = zip(*data)
+            for i, line in enumerate(f, 1):
+                if i > limit:
+                    break
 
-        en = next(data)
-        ru = next(data)
-        super().__init__(ru, en, ru_lang, en_lang)
+                en, ru = line.strip().split('\t')
+                en_list.append(en)
+                ru_list.append(ru)
+
+        super().__init__(ru_list, en_list, ru_lang, en_lang)
