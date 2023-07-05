@@ -222,3 +222,25 @@ class Yandex(RUENDataset):
             en_list = f.readlines()[data_slice]
 
         super().__init__(ru_list, en_list, ru_lang, en_lang)
+
+
+@final
+class TestDataset(Dataset):
+    def __init__(self, file: str, lang: Language):
+        with open(file) as f:
+            lines = f.readlines()
+
+        self.sentences = [preprocess_ru(s) for s in lines]
+        self.lang = lang
+
+    def __len__(self, /):
+        return len(self.sentences)
+
+    def __iter__(self, /):
+        return iter(self.sentences)
+
+    def __getitem__(self, index: int, /):
+        return self.lang.sentence2tensor(self.sentences[index], with_eos=True)
+
+    def get(self, index: int, /):
+        return self.sentences[index]

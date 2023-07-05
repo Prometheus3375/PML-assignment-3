@@ -1,84 +1,63 @@
 from zipfile import ZipFile
 
 import torch
-from torch import Tensor
+from torch.utils.data import DataLoader
 
-from data import EOS, Language, Token_EOS, Token_SOS, preprocess_ru
+from data import Language, TestDataset, Token_EOS, Token_SOS, token2tensor
 from device import Device
 from misc import Printer, time
-from model import AttnDecoderRNN, EncoderRNN
-
-
-def evaluate(encoder: EncoderRNN, decoder: AttnDecoderRNN, input_tensor: Tensor):
-    with torch.no_grad():
-        input_length = input_tensor.size()[0]
-        encoder_hidden = encoder.init_hidden()
-
-        encoder_outputs = torch.zeros(decoder.max_length, encoder.hidden_size, device=Device)
-
-        for ei in range(input_length):
-            encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_hidden)
-            encoder_outputs[ei] += encoder_output[0, 0]
-
-        decoder_input = torch.tensor([[Token_SOS]], device=Device)  # SOS
-
-        decoder_hidden = encoder_hidden
-
-        decoded_indexes = []
-
-        for di in range(decoder.max_length):
-            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-            topv, topi = decoder_output.topk(1)
-            if topi.item() == Token_EOS:
-                break
-
-            decoded_indexes.append(topi.item())
-            decoder_input = topi.squeeze().detach()
-
-        return decoded_indexes
+from model import Decoder, Encoder
 
 
 @time
 def main(text_path: str, data_path: str):
-    hidden_state_size, max_input_length, ru_counter, en_counter, encoder_w, decoder_w = torch.load(data_path)
+    ru_args, en_args, encoder_data, decoder_data = torch.load(data_path)
 
-    ru_lang = Language(ru_counter)
-    en_lang = Language(en_counter)
+    ru_lang = Language(*ru_args)
+    en_lang = Language(*en_args)
 
-    encoder = EncoderRNN(ru_lang.words_n, hidden_state_size)
-    encoder.load_state_dict(encoder_w)
-    encoder.to(Device).eval()
+    dataset = TestDataset(text_path, ru_lang)
+    batch = 1
+    loader = DataLoader(dataset, batch)
 
-    decoder = AttnDecoderRNN(hidden_state_size, en_lang.words_n, max_input_length)
-    decoder.load_state_dict(decoder_w)
-    decoder.to(Device).eval()
+    encoder = Encoder.from_data(encoder_data).to(Device).eval()
+    decoder = Decoder.from_data(decoder_data).to(Device).eval()
 
-    with open(text_path) as f:
-        with open('answer.txt', 'w') as out:
-            with Printer() as printer:
-                printer.print(f'Testing: starting...')
-                lines = f.readlines()
+    total = len(dataset)
+    with torch.no_grad(), Printer() as printer, open('answer.txt', 'w') as out:
+        printer.print(f'Testing: starting...')
+        for i, sentence in enumerate(loader, 1):
+            # print_tensor(sentence, 'encoder_inp')
 
-                total = len(lines)
-                for i, line in enumerate(lines, 1):
-                    sentence = preprocess_ru(line)
-                    ru = ru_lang.sentence2tensor(f'{sentence} {EOS}').view(-1, 1)
+            encoded, hc = encoder(sentence)
 
-                    answer = evaluate(encoder, decoder, ru)
-                    out.write(' '.join(en_lang.index2word[i] for i in answer) + '\n')
+            decoder_inp = token2tensor(Token_SOS, batch)
+            # print_tensor(decoder_inp, 'decoder_inp')
 
-                    if i % 10 == 0:
-                        printer.print(f'Testing: {i / total:.0%} [{i:,}/{total:,}]')
+            answer = []
+            for _ in range(en_lang.sentence_length):
+                decoded, hc = decoder(decoder_inp, hc)
 
-                printer.print(f'Testing: completed')
+                topv, topi = decoded.topk(1, dim=1)
+                token = topi.item()
+                if token == Token_EOS:
+                    break
+
+                answer.append(token)
+                decoder_inp = token2tensor(token, batch)
+                # print_tensor(decoder_inp, 'decoder_inp')
+
+            out.write(' '.join(en_lang.index2word[i] for i in answer) + '\n')
+
+            printer.print(f'Testing: {i / total:.0%} [{i:,}/{total:,}]')
 
     with ZipFile('answer.zip', 'w') as z:
         z.write('answer.txt')
 
 
 if __name__ == '__main__':
-    default_text = 'eval-ru-100.txt'
-    default_data = 'data.pth'
+    default_text = 'tests/test-100-lines.txt'
+    default_data = 'data/data.pth'
 
     from argparse import ArgumentParser
 
