@@ -1,4 +1,12 @@
+# Project
 datasets/
 answer.zip
 answer.txt
 data*.pth
+
+# PyCharm
+.idea/
+
+# Common
+venv/
+__pycache__/
