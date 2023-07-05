@@ -22,7 +22,7 @@ def preprocess_en(s: str, /) -> Sentence:
     s = Pattern_ignored.sub('', s)
     words = s.split()
     for i, w in enumerate(words):
-        w = w.rstrip(",.:'’")
+        w = w.strip(",.:'’")
 
         if Pattern_number.fullmatch(w):
             pass
@@ -49,7 +49,7 @@ def preprocess_ru(s: str, /) -> Sentence:
     s = Pattern_ignored.sub('', s)
     words = s.split()
     for i, w in enumerate(words):
-        w = w.rstrip(",.:’")
+        w = w.strip(",.:'’")
 
         if not Pattern_number.fullmatch(w):
             w = Pattern_not_alpha.sub(' ', w).strip()
