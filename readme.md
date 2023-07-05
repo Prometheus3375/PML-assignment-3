@@ -25,17 +25,17 @@ Unzip downloaded archives and place text files in the following directories:
 
 # Model
 
-We used basic sequence-to-sequence RNN-based model with an attention layer. Our model is based on several tutorials
+We used a basic sequence-to-sequence RNN-based model with an attention layer. Our model is based on several tutorials
 ([1](https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html),
 [2](https://github.com/bentrevett/pytorch-seq2seq/blob/master/3%20-%20Neural%20Machine%20Translation%20by%20Jointly%20Learning%20to%20Align%20and%20Translate.ipynb))
 , but there are some differences.
 
 Some notable changes:
 
-- **Proper batching**. Sentences must have equal length to be placed a batch, i.e. they must be padded with some special
-  token. In embeddings and criterion this token is marked as ignored to reduce the impact of padding on model's
-  performance. Also, batches are wrapped in PackedSequence object before running through RNNs, and attention layer uses
-  a mask to ignore pad tokens.
+- **Proper batching**. Sentences must have equal length to be placed in a batch, i.e. they must be padded with some
+  special token. In embeddings and criterion this token is marked as ignored to reduce the impact of padding on model's
+  performance. Also, batches are wrapped in a PackedSequence object before running through RNNs, and the attention layer
+  uses a mask to ignore pad tokens.
 
 - **Different model structure**. Although the idea of the model is the same as in tutorials, significant changes are
   made to its structure. All parts of Seq2Seq model:
@@ -129,7 +129,7 @@ Some notable changes:
 - **Preprocessing**. Sentences are cleaned from most non-alphanumeric symbols. Numbers and English shortcuts such as
   "don't" and "he's" have special preprocessing.
 
-- **Word dropping**. Words that was met once are dropped from the vocabulary.
+- **Word dropping**. Words that are met once are dropped from the vocabulary.
 
 ## Optimizer and loss function
 
@@ -139,7 +139,7 @@ Adam's optimizer and CrossEntropyLoss with sum reduction.
 
 Unfortunately, the performance of the model is very low, 1.18 BLEU. Several probable reasons:
 
-- **Small vocabulary**. We have too small GRU RAM. Therefore, only 10k sentences from Yandex dataset were used in
+- **Small vocabulary**. We have too small GRU RAM. Therefore, only 10k sentences from the Yandex dataset were used in
   training. This is too few sentences, resulting in a very small vocabulary. Even with such vocabulary, allowed batch
   size is 60, and 20 epochs of training require 40-50 minutes on GPU.
 
