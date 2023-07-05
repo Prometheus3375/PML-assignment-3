@@ -43,14 +43,16 @@ def main():
             data_slice=slice(0),
         )
 
-        low = ru_lang.lower_than(1)
+        low = ru_lang.lower_than(hyper.ru_word_count_minimum)
         infrequent_words_n = max(ceil(ru_lang.words_n * hyper.infrequent_words_percent), len(low))
-        ru_lang.drop_words(ru_lang.lowk(infrequent_words_n))
-        print(f'{infrequent_words_n:,} infrequent Russian words are dropped')
+        if infrequent_words_n > 0:
+            ru_lang.drop_words(ru_lang.lowk(infrequent_words_n))
+            print(f'{infrequent_words_n:,} infrequent Russian words are dropped')
 
-        # low = en_lang.lower_than(2)
-        # en_lang.drop_words(*low)
-        # print(f'{len(low):,} infrequent English words are dropped')
+        low = en_lang.lower_than(hyper.en_word_count_minimum)
+        if len(low) > 0:
+            en_lang.drop_words(*low)
+            print(f'{len(low):,} infrequent English words are dropped')
 
         print(f'Russian language: {ru_lang.words_n:,} words, {ru_lang.sentence_length:,} words in a sentence')
         print(f'English language: {en_lang.words_n:,} words, {en_lang.sentence_length:,} words in a sentence')
