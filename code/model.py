@@ -9,8 +9,6 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from data import Token_PAD
 from utils import Device
 
-_tt = tuple[Tensor, Tensor]
-
 
 class Model(nn.Module):
     def __getattr__(self, attr: str, /):
@@ -38,7 +36,7 @@ class RNN(Model):
     def __init__(self, input_dim: int, hidden_dim: int, /,
                  layers_count: int = 1, bi: bool = False, batch_first: bool = False):
         super().__init__()
-        self.lstm = nn.LSTM(
+        self.rnn = nn.GRU(
             input_size=input_dim,
             hidden_size=hidden_dim,
             num_layers=layers_count,
@@ -51,32 +49,23 @@ class RNN(Model):
 
     @property
     def input_dim(self, /):
-        return self.lstm.input_size
+        return self.rnn.input_size
 
     @property
     def hidden_dim(self, /):
-        return self.lstm.hidden_size
+        return self.rnn.hidden_size
 
     @property
     def layers_count(self, /):
-        return self.lstm.num_layers
+        return self.rnn.num_layers
 
     @property
     def bi(self, /):
-        return self.lstm.bidirectional
+        return self.rnn.bidirectional
 
     @property
     def batch_first(self, /):
-        return self.lstm.batch_first
-
-    def initial_h(self, batch_size: int, /):
-        return torch.zeros(self.layers_count * (self.bi + 1), batch_size, self.hidden_dim, device=Device)
-
-    def initial_c(self, batch_size: int, /):
-        return torch.zeros(self.layers_count * (self.bi + 1), batch_size, self.hidden_dim, device=Device)
-
-    def initial_hc(self, batch_size: int, /):
-        return self.initial_h(batch_size), self.initial_c(batch_size)
+        return self.rnn.batch_first
 
 
 @final
@@ -93,26 +82,12 @@ class Encoder(RNN):
         )
         self.dropout = nn.Dropout()
 
-        self.linear_h = nn.Linear(hidden_dim * (self.bi + 1), hidden_dim)
-        self.linear_c = nn.Linear(hidden_dim * (self.bi + 1), hidden_dim)
+        self.linear = nn.Linear(hidden_dim * (self.bi + 1), hidden_dim)
 
     def __getnewargs__(self, /):
         return self.words_n, self.input_dim, self.hidden_dim
 
-    @staticmethod
-    def _process_v(v: Tensor, fc: nn.Linear) -> Tensor:
-        # v[0] = v[-2, :, :]  last forward
-        # v[1] = v[-1, :, :]  last backward
-        v = torch.cat((v[0], v[1]), dim=1)
-        # v (batch, hidden_dim * 2)
-        v = fc(v)
-        # v (batch, hidden_dim)
-        v = torch.tanh(v)
-        v = v.unsqueeze(0)
-        # v (1, batch, hidden_dim)
-        return v
-
-    def __call__(self, data: Tensor, lengths: Tensor) -> tuple[Tensor, _tt]:
+    def __call__(self, data: Tensor, lengths: Tensor) -> tuple[Tensor, Tensor]:
         l, b = data.size()
 
         # data (words, batch)
@@ -120,17 +95,22 @@ class Encoder(RNN):
         # embed (words, batch, input_dim)
         embed = self.dropout(embed)
         seqs = pack_padded_sequence(embed, lengths, self.batch_first, False)
-        out, hc = self.lstm(seqs)
+        out, h = self.rnn(seqs)
         out, lengths = pad_packed_sequence(out, self.batch_first, Token_PAD, l)
         # out (words, batch, (bi + 1) * hidden_dim)
-        # hc (layers_count * (bi + 1), batch, hidden_dim)
-        h, c = hc
-        h = self._process_v(h, self.linear_h)
-        c = self._process_v(c, self.linear_c)
-        # hc (1, batch, hidden_dim)
+        # h (layers_count * (bi + 1), batch, hidden_dim)
+        # h[0] last forward
+        # h[1] last backward
+        h = torch.cat((h[0], h[1]), dim=1)
+        # h (batch, hidden_dim * 2)
+        h = self.linear(h)
+        # v (batch, hidden_dim)
+        h = torch.tanh(h)
+        h = h.unsqueeze(0)
+        # h (1, batch, hidden_dim)
         out = out.transpose(0, 1)
         # out (batch, words, (bi + 1) * hidden_dim)
-        return out, (h, c)
+        return out, h
 
 
 @final
@@ -192,7 +172,7 @@ class Decoder(RNN):
     def __getnewargs__(self, /):
         return self.words_n, self.input_dim - self.hidden_dim * 2, self.hidden_dim
 
-    def __call__(self, data: Tensor, weighted: Tensor, hc: _tt) -> tuple[Tensor, _tt]:
+    def __call__(self, data: Tensor, weighted: Tensor, h: Tensor) -> tuple[Tensor, Tensor]:
         # weighted (1, batch, hidden_dim * 2)
         # data (batch)
         data = data.unsqueeze(0)
@@ -203,9 +183,9 @@ class Decoder(RNN):
 
         inp = torch.cat((embed, weighted), dim=2)
         # embed (words = 1, batch, input_dim + hidden_dim * 2)
-        out, hc = self.lstm(inp, hc)
+        out, h = self.rnn(inp, h)
         # out (words = 1, batch, (bi + 1) * hidden_dim)
-        # hc (layers_count * (bi + 1), batch, hidden_dim)
+        # h (layers_count * (bi + 1), batch, hidden_dim)
 
         result = torch.cat((out, weighted, embed), dim=2)
         # result (words = 1, batch, (bi + 1) * hidden_dim + hidden_dim * 2 + input_dim)
@@ -213,7 +193,7 @@ class Decoder(RNN):
         # result (words = 1, batch, words_n)
         result = result.squeeze(0)
         # result (batch, words_n)
-        return result, hc
+        return result, h
 
 
 @final
@@ -262,23 +242,23 @@ class Seq2Seq(Model):
         inp = inp.transpose(0, 1)
         out = out.transpose(0, 1)
 
-        encoded, hc = self.encoder(inp, inp_lengths)
+        encoded, h = self.encoder(inp, inp_lengths)
         # encoded (batch, words, 2 * hidden_dim)
 
         l, b = out.size()
         predictions = torch.zeros(l, b, self.decoder.words_n, device=Device) + Token_PAD
         inp = out[0]
         # inp (batch)
-        weighted = self._eval_weighted(encoded, mask, hc[0])
+        weighted = self._eval_weighted(encoded, mask, h)
         # weighted (1, batch, 2 * hidden_dim)
         for k in range(l - 1):
-            predict, hc = self.decoder(inp, weighted, hc)
+            predict, h = self.decoder(inp, weighted, h)
             predictions[k] = predict
 
             inp = out[k + 1] if self.teach(teaching_percent) else predict.argmax(1)
-            weighted = self._eval_weighted(encoded, mask, hc[0])
+            weighted = self._eval_weighted(encoded, mask, h)
 
-        predict, hc = self.decoder(inp, weighted, hc)
+        predict, h = self.decoder(inp, weighted, h)
         predictions[-1] = predict
         # predictions (words, batch, words_n)
 
