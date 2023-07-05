@@ -27,12 +27,13 @@ def preprocess_ru(s: str, /) -> Sentence:
     return s.strip().split()
 
 
-Token_sos = 0
-Token_eos = 1
-Token_nil = 2
 SOS = '^'
 EOS = '$'
 NIL = '*'
+Special = [SOS, EOS, NIL]
+Token_SOS = Special.index(SOS)
+Token_EOS = Special.index(EOS)
+Token_NIL = Special.index(NIL)
 
 
 @final
@@ -44,7 +45,7 @@ class Language:
         self._reindex()
 
     def _reindex(self, /):
-        self.index2word: list[str] = [SOS, EOS, NIL] + sorted(self.word_counter)
+        self.index2word: list[str] = Special + sorted(self.word_counter)
         self.word2index: dict[str, int] = {i: w for i, w in enumerate(self.index2word)}
 
     def __getnewargs__(self, /):
@@ -78,6 +79,9 @@ class Language:
 
         return set()
 
+    def sentence2tensor(self, sentence: Sentence):
+        return tensor([self.word2index.get(w, Token_NIL) for w in sentence])
+
 
 class RUENDataset(Dataset):
     def __init__(self, ru: Collection[str], en: Collection[str], ru_lang: Language, en_lang: Language, /):
@@ -87,31 +91,29 @@ class RUENDataset(Dataset):
         if ru_lang is en_lang:
             raise ValueError(f'same language object is used for RU and EN')
 
-        self._ru_lang = ru_lang
-        self._ru = [preprocess_ru(s) for s in ru]
-        ru_lang.add_sentences(self._ru)
+        self.ru_lang = ru_lang
+        self.ru = [preprocess_ru(s) for s in ru]
 
-        self._en_lang = en_lang
-        self._en = [preprocess_en(s) for s in en]
-        en_lang.add_sentences(self._en)
+        self.en_lang = en_lang
+        self.en = [preprocess_en(s) for s in en]
 
     def __len__(self, /):
-        return len(self._ru)
+        return len(self.ru)
 
     def __iter__(self, /):
-        return zip(self._ru, self._en)
+        return zip(self.ru, self.en)
 
     def __getitem__(self, index: int, /):
-        ru = [self._ru_lang.word2index[w] for w in self._ru[index]]
-        en = [self._en_lang.word2index[w] for w in self._en[index]]
-        return tensor(ru), tensor(en)
+        return (
+            self.ru_lang.sentence2tensor(self.ru[index]),
+            self.en_lang.sentence2tensor(self.en[index]),
+        )
 
     def get(self, index: int, /):
-        return self._ru[index], self._en[index]
+        return self.ru[index], self.en[index]
 
-    def drop_ru_words(self, percentage: float, /):
-        dropped = self._ru_lang.drop_words(percentage)
-        for sentence in self._ru:
+    def drop_words_ru(self, dropped: set[str], /):
+        for sentence in self.ru:
             for i, word in enumerate(sentence):
                 if word in dropped:
                     sentence[i] = NIL
