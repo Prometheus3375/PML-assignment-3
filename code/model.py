@@ -18,7 +18,9 @@ class Model(nn.Module):
         try:
             return super().__getattr__(attr)
         except AttributeError:
-            return self.__getattribute__(attr)
+            pass
+
+        return self.__getattribute__(attr)
 
     @property
     def data(self, /):
