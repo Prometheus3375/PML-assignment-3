@@ -39,7 +39,7 @@ def evaluate(encoder: EncoderRNN, decoder: AttnDecoderRNN, input_tensor: Tensor)
 
 
 @time
-def main(data_path: str):
+def main(text_path: str, data_path: str):
     hidden_state_size, max_output_length, ru_counter, en_counter, encoder_w, decoder_w = torch.load(data_path)
 
     ru_lang = Language(ru_counter)
@@ -53,7 +53,7 @@ def main(data_path: str):
     decoder.load_state_dict(decoder_w)
     decoder.to(Device).eval()
 
-    with open('test.ru.txt') as f:
+    with open(text_path) as f:
         with open('answer.txt', 'w') as out:
             with Printer() as printer:
                 printer.print(f'Testing: starting...')
@@ -77,12 +77,19 @@ def main(data_path: str):
 
 
 if __name__ == '__main__':
+    default_text = 'eval-ru-100.txt'
     default_data = 'data.pth'
 
     from argparse import ArgumentParser
 
     parser = ArgumentParser(
-        usage='Runs model on test.ru.txt and save results to answer.zip with answer.txt',
+        usage='Runs model on given text file and save results to answer.zip with answer.txt',
+    )
+    parser.add_argument(
+        'text',
+        nargs='?',
+        default=default_text,
+        help=f'path to text file. Default: {default_text!r}',
     )
     parser.add_argument(
         'data',
@@ -93,4 +100,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    main(args.data)
+    main(args.text, args.data)
