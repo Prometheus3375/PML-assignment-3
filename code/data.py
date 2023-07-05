@@ -124,6 +124,7 @@ class Language:
         return [self.word2index.get(w, Token_NIL) for w in sentence.split()]
 
 
+@final
 class LanguageData:
     __slots__ = 'data', 'lang', 'max_length',
 
