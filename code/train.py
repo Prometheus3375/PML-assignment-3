@@ -10,7 +10,8 @@ from torch.utils.data import ConcatDataset, DataLoader
 import hyper
 from data import Language, ParaCrawl, Token_PAD, Yandex
 from misc import Printer, Timer, time
-from model import Decoder, Encoder, Seq2Seq
+from model import Attention, Decoder, Encoder, Seq2Seq
+from test import evaluate
 from utils import Device, make_determenistic
 
 
@@ -42,14 +43,14 @@ def main():
             data_slice=slice(0),
         )
 
-        low = ru_lang.lower_than(2)
+        low = ru_lang.lower_than(1)
         infrequent_words_n = max(ceil(ru_lang.words_n * hyper.infrequent_words_percent), len(low))
         ru_lang.drop_words(ru_lang.lowk(infrequent_words_n))
         print(f'{infrequent_words_n:,} infrequent Russian words are dropped')
 
-        low = en_lang.lower_than(2)
-        en_lang.drop_words(*low)
-        print(f'{len(low):,} infrequent English words are dropped')
+        # low = en_lang.lower_than(2)
+        # en_lang.drop_words(*low)
+        # print(f'{len(low):,} infrequent English words are dropped')
 
         print(f'Russian language: {ru_lang.words_n:,} words, {ru_lang.sentence_length:,} words in a sentence')
         print(f'English language: {en_lang.words_n:,} words, {en_lang.sentence_length:,} words in a sentence')
@@ -60,9 +61,11 @@ def main():
     # endregion
 
     # region Models and optimizers
-    encoder = Encoder(ru_lang.words_n, hyper.embed_dim, hyper.hidden_dim).to(Device).train()
-    decoder = Decoder(en_lang.words_n, hyper.embed_dim, hyper.hidden_dim).to(Device).train()
-    model = Seq2Seq(encoder, decoder)
+    model = Seq2Seq(
+        Encoder(ru_lang.words_n, hyper.embed_dim, hyper.hidden_dim),
+        Attention(hyper.hidden_dim),
+        Decoder(en_lang.words_n, hyper.embed_dim, hyper.hidden_dim),
+    ).to(Device).train()
 
     optimizer = Adam(model.parameters(), lr=hyper.learning_rate)
     criterion = CrossEntropyLoss(ignore_index=Token_PAD, reduction='sum')
@@ -103,8 +106,10 @@ def main():
             en_lang.__getnewargs__(),
             model.cpu().eval().data,
         ),
-        'data/data.pth',
+        'data/data.pt',
     )
+
+    evaluate(model.to(Device), ru_lang, en_lang, 'tests/test-100-lines.txt')
 
 
 if __name__ == '__main__':
